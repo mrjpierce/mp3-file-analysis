@@ -20,36 +20,6 @@ describe("Mpeg1Layer3ParserService", () => {
     await module.close();
   });
 
-  describe("validate", () => {
-    it("should return true for valid MPEG-1 Layer 3 file", () => {
-      const testFilePath = join(
-        __dirname,
-        "../test-data/Frame by Frame (Foundation Health).mp3",
-      );
-      const fileBuffer = readFileSync(testFilePath);
-
-      const isValid = service.validate(fileBuffer);
-
-      expect(isValid).toBe(true);
-    });
-
-    it("should return false for invalid file", () => {
-      const invalidBuffer = Buffer.from("This is not an MP3 file");
-
-      const isValid = service.validate(invalidBuffer);
-
-      expect(isValid).toBe(false);
-    });
-
-    it("should return false for empty buffer", () => {
-      const emptyBuffer = Buffer.alloc(0);
-
-      const isValid = service.validate(emptyBuffer);
-
-      expect(isValid).toBe(false);
-    });
-  });
-
   describe("countFrames", () => {
     it("should count frames in a valid MPEG-1 Layer 3 file", async () => {
       const testFilePath = join(

@@ -39,14 +39,7 @@ export class FileUploadController {
       );
     }
 
-    // Validate the file format
-    if (!parser.validate(file.buffer)) {
-      throw new BadRequestException(
-        `Invalid ${typeInfo.description} file format.`,
-      );
-    }
-
-    // Count frames using the appropriate parser
+    // Count frames using the appropriate parser (this will also validate the file format)
     const frameCount = await parser.countFrames(file.buffer);
 
     return { frameCount };

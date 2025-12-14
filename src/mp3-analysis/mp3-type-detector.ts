@@ -1,3 +1,6 @@
+import { COMMON_MP3_CONSTANTS } from "./mp3-frame-constants";
+import { Mp3Parser } from "./mp3-parser";
+
 /**
  * MP3 file type detection result
  */
@@ -26,28 +29,15 @@ export class Mp3TypeDetector {
     }
 
     // Skip ID3v2 tags
-    let position = 0;
-    if (
-      buffer.length >= 10 &&
-      buffer[0] === 0x49 &&
-      buffer[1] === 0x44 &&
-      buffer[2] === 0x33
-    ) {
-      const sizeByte6 = buffer[6];
-      const sizeByte7 = buffer[7];
-      const sizeByte8 = buffer[8];
-      const sizeByte9 = buffer[9];
-      const tagSize =
-        (sizeByte6 << 21) |
-        (sizeByte7 << 14) |
-        (sizeByte8 << 7) |
-        sizeByte9;
-      position = 10 + tagSize;
-    }
+    let position = Mp3Parser.skipId3v2Tag(buffer);
 
     // Search for first frame sync
-    while (position < buffer.length - 4) {
-      if (buffer[position] === 0xff && (buffer[position + 1] & 0xe0) === 0xe0) {
+    while (position < buffer.length - COMMON_MP3_CONSTANTS.FRAME_HEADER_SIZE) {
+      if (
+        buffer[position] === COMMON_MP3_CONSTANTS.SYNC_BYTE &&
+        (buffer[position + 1] & COMMON_MP3_CONSTANTS.SYNC_MASK) ===
+          COMMON_MP3_CONSTANTS.SYNC_MASK
+      ) {
         const version = (buffer[position + 1] >> 3) & 0x03;
         const layer = (buffer[position + 1] >> 1) & 0x03;
 

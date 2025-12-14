@@ -8,6 +8,114 @@ import { COMMON_MP3_CONSTANTS } from "./mp3-frame-constants";
  */
 export abstract class Mp3Parser implements IMp3Parser {
   /**
+   * Validates file integrity and detects corruption
+   * Fast, lightweight validation that checks for common corruption patterns
+   * @param buffer - The MP3 file buffer
+   * @throws BadRequestException if the file is corrupted or invalid
+   */
+  validate(buffer: Buffer): void {
+    // Reject null or empty buffers to prevent processing invalid data
+    if (!buffer || buffer.length === 0) {
+      throw new BadRequestException("Invalid MP3 file: empty buffer");
+    }
+
+    // Ensure file is large enough to contain at least one frame header
+    // Prevents index out of bounds errors during frame detection
+    if (buffer.length < this.getMinFrameSize()) {
+      throw new BadRequestException(
+        `Invalid MP3 file: file too small (${buffer.length} bytes)`,
+      );
+    }
+
+    let position = Mp3Parser.skipId3v2Tag(buffer);
+    let validFrameCount = 0;
+    const maxFramesToCheck = 10; // Limit validation to first few frames for performance
+
+    // Check frame alignment and detect corruption in initial frames
+    // Validates file structure without scanning entire file
+    while (
+      position < buffer.length - this.getMinFrameSize() &&
+      validFrameCount < maxFramesToCheck
+    ) {
+      if (this.isFrameSync(buffer, position)) {
+        if (this.isFormatSpecificFrame(buffer, position)) {
+          try {
+            const frameLength = this.parseFrameHeader(buffer, position);
+
+            // Detect truncated frames that would cause parsing errors
+            if (frameLength <= 0) {
+              throw new BadRequestException(
+                "Invalid MP3 file: corrupted frame header (invalid frame length)",
+              );
+            }
+
+            // Detect frames that extend beyond file boundaries
+            // Indicates file truncation or corruption
+            if (position + frameLength > buffer.length) {
+              throw new BadRequestException(
+                "Invalid MP3 file: truncated frame detected",
+              );
+            }
+
+            // Validate frame alignment by checking next expected frame position
+            // Detects gaps or overlapping frames that indicate corruption
+            const nextPosition = position + frameLength;
+            if (
+              nextPosition < buffer.length &&
+              !this.isHeaderFrame(buffer, position)
+            ) {
+              // Check if next frame starts at expected position (alignment check)
+              // Allows small tolerance for padding but flags major misalignment
+              const alignmentTolerance = 4;
+              let foundNextFrame = false;
+              for (
+                let offset = 0;
+                offset <= alignmentTolerance && nextPosition + offset < buffer.length;
+                offset++
+              ) {
+                if (this.isFrameSync(buffer, nextPosition + offset)) {
+                  foundNextFrame = true;
+                  break;
+                }
+              }
+
+              // If no frame found at expected position, file may be corrupted
+              // But only throw if we've validated at least one frame (to avoid false positives)
+              if (!foundNextFrame && validFrameCount > 0) {
+                throw new BadRequestException(
+                  "Invalid MP3 file: frame alignment error detected",
+                );
+              }
+            }
+
+            validFrameCount++;
+            position += frameLength;
+            continue;
+          } catch (error) {
+            // Re-throw BadRequestException from validation
+            if (error instanceof BadRequestException) {
+              throw error;
+            }
+            // Other errors indicate corrupted frame data
+            throw new BadRequestException(
+              `Invalid MP3 file: corrupted frame at position ${position}`,
+            );
+          }
+        }
+      }
+      position++;
+    }
+
+    // Ensure at least one valid frame was found
+    // Files with no valid frames are likely corrupted or wrong format
+    if (validFrameCount === 0) {
+      throw new BadRequestException(
+        `Invalid MP3 file: no valid ${this.getFormatDescription()} frames found`,
+      );
+    }
+  }
+
+  /**
    * Counts MP3 frames in a buffer
    * @param buffer - The MP3 file buffer
    * @returns The number of frames found

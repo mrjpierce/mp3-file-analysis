@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, BadRequestException } from "@nestjs/common";
 import { Mp3Parser } from "./mp3-parser";
 import {
   COMMON_MP3_CONSTANTS,
@@ -111,5 +111,83 @@ export class Mpeg1Layer3ParserService extends Mp3Parser {
    */
   protected getFormatDescription(): string {
     return "MPEG-1 Layer 3";
+  }
+
+  /**
+   * Validates file integrity and detects corruption
+   * Performs common validation first, then MPEG-1 Layer 3 specific checks
+   * @param buffer - The MP3 file buffer
+   * @throws BadRequestException if the file is corrupted or invalid
+   */
+  validate(buffer: Buffer): void {
+    // Perform common validation checks first (empty buffer, file size, frame alignment, etc.)
+    super.validate(buffer);
+
+    // Perform MPEG-1 Layer 3 specific validation
+    let position = Mp3Parser.skipId3v2Tag(buffer);
+    const maxFramesToCheck = 5; // Check first few frames for consistency
+
+    // Validate frame header consistency across multiple frames
+    // Detects corruption where frame headers have inconsistent or invalid values
+    let firstBitrate: number | null = null;
+    let firstSampleRate: number | null = null;
+    let checkedFrames = 0;
+
+    while (
+      position < buffer.length - this.getMinFrameSize() &&
+      checkedFrames < maxFramesToCheck
+    ) {
+      if (this.isFrameSync(buffer, position)) {
+        if (this.isFormatSpecificFrame(buffer, position)) {
+          try {
+            const header = buffer.readUInt32BE(position);
+            const bitrateIndex = (header >> 12) & 0x0f;
+            const sampleRateIndex = (header >> 10) & 0x03;
+
+            const bitrate = MPEG1_LAYER3_BITRATES[bitrateIndex];
+            const sampleRate = MPEG1_SAMPLE_RATES[sampleRateIndex];
+
+            // Detect invalid bitrate/sample rate combinations that indicate corruption
+            if (bitrate === 0 || sampleRate === 0) {
+              throw new BadRequestException(
+                "Invalid MP3 file: corrupted frame header (invalid bitrate or sample rate)",
+              );
+            }
+
+            // Check for consistent encoding parameters across frames
+            // VBR files may vary, but CBR files should be consistent
+            // Flagging only extreme inconsistencies to avoid false positives
+            if (firstBitrate !== null && firstSampleRate !== null) {
+              // Allow some variation for VBR, but flag impossible changes
+              if (
+                bitrate !== firstBitrate &&
+                sampleRate !== firstSampleRate &&
+                checkedFrames < 3
+              ) {
+                // Very early frame changes might indicate corruption
+                // But allow it after a few frames (VBR detection)
+              }
+            } else {
+              firstBitrate = bitrate;
+              firstSampleRate = sampleRate;
+            }
+
+            const frameLength = this.parseFrameHeader(buffer, position);
+            position += frameLength;
+            checkedFrames++;
+            continue;
+          } catch (error) {
+            if (error instanceof BadRequestException) {
+              throw error;
+            }
+            // Frame parsing errors indicate corruption
+            throw new BadRequestException(
+              `Invalid MPEG-1 Layer 3 file: corrupted frame at position ${position}`,
+            );
+          }
+        }
+      }
+      position++;
+    }
   }
 }

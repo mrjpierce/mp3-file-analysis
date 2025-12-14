@@ -39,7 +39,10 @@ export class FileUploadController {
       );
     }
 
-    // Count frames using the appropriate parser (this will also validate the file format)
+    // Validate file integrity and detect corruption
+    parser.validate(file.buffer);
+
+    // Count frames using the appropriate parser
     const frameCount = await parser.countFrames(file.buffer);
 
     return { frameCount };

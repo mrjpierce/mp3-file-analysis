@@ -50,11 +50,11 @@ This document outlines the development milestones for the MP3 file analysis back
 **Goal**: Implement actual MP3 frame counting (no streaming yet, load entire file).
 
 ### Tasks
-- [ ] Create MP3 parser service
-- [ ] Implement frame sync pattern detection (0xFF 0xFB or 0xFF 0xFA)
-- [ ] Parse frame headers to extract frame length
-- [ ] Count frames by iterating through file
-- [ ] Return actual frame count
+- [x] Create MP3 parser service
+- [x] Implement frame sync pattern detection (0xFF 0xFB or 0xFF 0xFA)
+- [x] Parse frame headers to extract frame length
+- [x] Count frames by iterating through file
+- [x] Return actual frame count
 
 ### Acceptance Criteria
 - ✅ `POST /file-upload` with valid MP3 file returns correct frame count

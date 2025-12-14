@@ -4,11 +4,14 @@ import prettier from "eslint-config-prettier";
 import globals from "globals";
 
 export default tseslint.config(
+  {
+    ignores: ["dist/**", "node_modules/**", "coverage/**", "cdk.out/**", "*.js", "*.cjs"],
+  },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   prettier,
   {
-    ignores: ["eslint.config.mjs", "dist/**", "node_modules/**"],
+    ignores: ["eslint.config.mjs"],
     rules: {
       "@typescript-eslint/no-unused-vars": [
         "error",

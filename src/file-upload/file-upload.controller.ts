@@ -7,9 +7,17 @@ import {
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { UploadResponseDto } from "./dto/upload-response.dto";
+import { Inject } from "@nestjs/common";
+import { Mp3TypeDetector } from "../mp3-analysis/mp3-type-detector";
+import { IParserRegistry } from "../mp3-analysis/parser-registry.interface";
 
 @Controller("file-upload")
 export class FileUploadController {
+  constructor(
+    @Inject("IParserRegistry")
+    private readonly parserRegistry: IParserRegistry,
+  ) {}
+
   @Post()
   @UseInterceptors(FileInterceptor("file"))
   async uploadFile(
@@ -19,7 +27,24 @@ export class FileUploadController {
       throw new BadRequestException("File is required");
     }
 
-    // Hardcoded response for Milestone 2
-    return { frameCount: 42 };
+    // Detect the MP3 file type
+    const typeInfo = Mp3TypeDetector.detectType(file.buffer);
+
+    // Get the appropriate parser for this file type
+    const parser = this.parserRegistry.getParser(typeInfo);
+
+    if (!parser) {
+      throw new BadRequestException(
+        `Unsupported MP3 file type: ${typeInfo.description}. No parser available for this format.`,
+      );
+    }
+
+    // Validate file integrity and detect corruption
+    parser.validate(file.buffer);
+
+    // Count frames using the appropriate parser
+    const frameCount = await parser.countFrames(file.buffer);
+
+    return { frameCount };
   }
 }

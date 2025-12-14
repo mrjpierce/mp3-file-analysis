@@ -49,3 +49,6 @@ yarn-error.log*
 
 # LocalStack
 localstack-data/
+
+# Test data
+test-data/sample (2).mp3

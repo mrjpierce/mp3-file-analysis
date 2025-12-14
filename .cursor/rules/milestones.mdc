@@ -1,0 +1,421 @@
+---
+alwaysApply: true
+---
+# Development Milestones
+
+This document outlines the development milestones for the MP3 file analysis backend. We follow a walking skeleton approach: get end-to-end working first, then enhance features.
+
+## Milestone 1: Project Setup
+
+**Goal**: Set up the project structure and development environment.
+
+### Tasks
+- [x] Initialize NestJS project structure
+- [x] Configure TypeScript, ESLint, Prettier
+- [x] Set up Jest for testing
+- [x] Create basic project structure (src/, tests/)
+- [x] Add .gitignore and basic documentation
+
+### Acceptance Criteria
+- ✅ `npm install` works without errors
+- ✅ `npm run build` compiles TypeScript successfully
+- ✅ `npm test` runs (even if no tests exist yet)
+- ✅ `npm run lint` passes
+- ✅ Project structure follows NestJS conventions
+
+---
+
+## Milestone 2: Walking Skeleton - Basic Endpoint
+
+**Goal**: Get a minimal working endpoint that accepts a file and returns a response.
+
+### Tasks
+- [ ] Create NestJS application with basic module structure
+- [ ] Implement `POST /file-upload` endpoint (controller)
+- [ ] Accept file upload (multipart/form-data)
+- [ ] Return hardcoded JSON response: `{ "frameCount": 42 }`
+- [ ] Add basic error handling for missing file
+
+### Acceptance Criteria
+- ✅ NestJS app starts on port 3000
+- ✅ `curl -X POST http://localhost:3000/file-upload -F "file=@any-file.txt"` returns `{"frameCount": 42}`
+- ✅ Missing file returns 400 error
+- ✅ Endpoint accepts multipart/form-data
+- ✅ Response is valid JSON with correct Content-Type header
+
+---
+
+## Milestone 3: MP3 Frame Counting - Basic Implementation
+
+**Goal**: Implement actual MP3 frame counting (no streaming yet, load entire file).
+
+### Tasks
+- [ ] Create MP3 parser service
+- [ ] Implement frame sync pattern detection (0xFF 0xFB or 0xFF 0xFA)
+- [ ] Parse frame headers to extract frame length
+- [ ] Count frames by iterating through file
+- [ ] Return actual frame count
+
+### Acceptance Criteria
+- ✅ `POST /file-upload` with valid MP3 file returns correct frame count
+- ✅ Frame count matches expected value for test MP3 files
+- ✅ Invalid MP3 files return 400 error with appropriate message
+- ✅ Unit tests for MP3 parser with sample files
+- ✅ Handles MPEG Version 1 Audio Layer 3 files correctly
+
+**Test Files Needed**:
+- Small valid MP3 file (< 1MB)
+- Medium valid MP3 file (5-10MB)
+- Invalid file (non-MP3)
+
+---
+
+## Milestone 4: Error Handling & Validation
+
+**Goal**: Add comprehensive error handling and input validation.
+
+### Tasks
+- [ ] Validate file type (check magic bytes/MP3 signature)
+- [ ] Validate file size limits (reject > 1GB)
+- [ ] Add specific error codes and messages
+- [ ] Implement global exception filter
+- [ ] Add request validation (file required, correct format)
+- [ ] Add structured error responses
+
+### Acceptance Criteria
+- ✅ Non-MP3 files return 400 with `{"error": "Invalid MP3 file format", "code": "INVALID_FORMAT"}`
+- ✅ Files > 1GB return 413 with `{"error": "File too large", "code": "FILE_TOO_LARGE"}`
+- ✅ Missing file returns 400 with `{"error": "File is required", "code": "FILE_REQUIRED"}`
+- ✅ All errors return proper HTTP status codes
+- ✅ Error responses follow consistent format
+
+---
+
+## Milestone 5: Streaming Implementation - Small Files
+
+**Goal**: Implement streaming for small files (process from request stream, no S3).
+
+### Tasks
+- [ ] Refactor MP3 parser to work with streams
+- [ ] Process file directly from HTTP request stream
+- [ ] Use Node.js streams instead of loading entire file
+- [ ] Maintain frame counting accuracy with streaming
+- [ ] Add memory usage monitoring
+
+### Acceptance Criteria
+- ✅ Files < 50MB processed directly from request stream
+- ✅ Frame count accuracy maintained with streaming
+- ✅ Memory usage stays low (doesn't load entire file)
+- ✅ Processing time similar or better than before
+- ✅ Unit tests verify streaming behavior
+
+---
+
+## Milestone 6: LocalStack Integration
+
+**Goal**: Set up LocalStack for local S3 development.
+
+### Tasks
+- [ ] Add docker-compose.yml with LocalStack service
+- [ ] Configure AWS SDK to use LocalStack endpoint
+- [ ] Create S3 service module
+- [ ] Implement S3 bucket creation (via script or CDK)
+- [ ] Test S3 operations with LocalStack
+
+### Acceptance Criteria
+- ✅ `docker-compose up -d localstack` starts LocalStack
+- ✅ S3 bucket can be created in LocalStack
+- ✅ Files can be uploaded to LocalStack S3
+- ✅ Files can be read from LocalStack S3
+- ✅ NestJS app connects to LocalStack S3 successfully
+
+---
+
+## Milestone 7: S3 Streaming for Large Files
+
+**Goal**: Implement S3 streaming for large files (>50MB).
+
+### Tasks
+- [ ] Implement file upload to S3 (stream request to S3)
+- [ ] Implement file read from S3 (stream S3 to parser)
+- [ ] Add logic to choose: direct processing vs S3 streaming
+- [ ] Clean up S3 files after processing
+- [ ] Handle S3 errors gracefully
+
+### Acceptance Criteria
+- ✅ Files > 50MB are streamed to S3, then processed from S3
+- ✅ Files < 50MB are processed directly (no S3)
+- ✅ Frame count accuracy maintained with S3 streaming
+- ✅ S3 files are deleted after processing
+- ✅ S3 errors return appropriate error responses
+- ✅ Works with LocalStack S3
+
+---
+
+## Milestone 8: Testing - Unit & Integration
+
+**Goal**: Comprehensive test coverage for core functionality.
+
+### Tasks
+- [ ] Unit tests for MP3 parser (various file sizes, edge cases)
+- [ ] Unit tests for file upload controller
+- [ ] Unit tests for S3 service
+- [ ] Integration tests for file upload endpoint
+- [ ] Test fixtures (sample MP3 files of various sizes)
+- [ ] Mock S3 for unit tests
+
+### Acceptance Criteria
+- ✅ Test coverage > 80% for core services
+- ✅ All unit tests pass
+- ✅ All integration tests pass
+- ✅ Tests run in CI/CD pipeline
+- ✅ Test fixtures included in repository
+
+---
+
+## Milestone 9: AWS Infrastructure - CDK Stack
+
+**Goal**: Create CDK stack for ALB + Fargate + S3 infrastructure.
+
+### Tasks
+- [ ] Create CDK stack structure
+- [ ] Define S3 bucket with lifecycle policies
+- [ ] Define ECS cluster
+- [ ] Define Fargate service
+- [ ] Define ALB with target group
+- [ ] Define IAM roles and policies
+- [ ] Define CloudWatch log groups
+
+### Acceptance Criteria
+- ✅ `cdk synth` generates valid CloudFormation template
+- ✅ Stack can be deployed to AWS (or dry-run)
+- ✅ All resources defined correctly
+- ✅ IAM permissions follow least privilege
+- ✅ Stack is idempotent (can deploy multiple times)
+
+---
+
+## Milestone 10: Containerization
+
+**Goal**: Create Docker container for NestJS application.
+
+### Tasks
+- [ ] Create Dockerfile for NestJS app
+- [ ] Optimize Docker image size
+- [ ] Add health check endpoint
+- [ ] Test container locally
+- [ ] Build and push to ECR (or local registry for testing)
+
+### Acceptance Criteria
+- ✅ Docker image builds successfully
+- ✅ Container runs and responds to health checks
+- ✅ Application works in container
+- ✅ Image size is reasonable (< 500MB)
+- ✅ Health check endpoint returns 200 OK
+
+---
+
+## Milestone 11: ECS Fargate Deployment
+
+**Goal**: Deploy NestJS application to ECS Fargate.
+
+### Tasks
+- [ ] Update CDK stack with ECS service definition
+- [ ] Configure Fargate task definition (CPU, memory)
+- [ ] Configure container image from ECR
+- [ ] Set up environment variables
+- [ ] Configure health checks
+- [ ] Deploy to AWS
+
+### Acceptance Criteria
+- ✅ Fargate service deploys successfully
+- ✅ Tasks are running and healthy
+- ✅ Health checks pass
+- ✅ Application logs appear in CloudWatch
+- ✅ Can access application via ALB endpoint
+
+---
+
+## Milestone 11: ALB Configuration
+
+**Goal**: Configure Application Load Balancer with proper routing.
+
+### Tasks
+- [ ] Create ALB in CDK
+- [ ] Configure target group pointing to Fargate service
+- [ ] Set up listener rules
+- [ ] Configure idle timeout (4000s)
+- [ ] Set up SSL/TLS (optional for MVP)
+- [ ] Configure health checks
+
+### Acceptance Criteria
+- ✅ ALB is created and accessible
+- ✅ Requests route to Fargate tasks
+- ✅ Health checks work correctly
+- ✅ Idle timeout configured appropriately
+- ✅ Can access `/file-upload` endpoint via ALB
+
+---
+
+## Milestone 13: End-to-End Testing
+
+**Goal**: Test complete flow from client to AWS infrastructure.
+
+### Tasks
+- [ ] Test file upload via ALB endpoint
+- [ ] Test small files (direct processing)
+- [ ] Test large files (S3 streaming)
+- [ ] Test error cases (invalid files, too large)
+- [ ] Verify CloudWatch logs
+- [ ] Verify S3 operations
+
+### Acceptance Criteria
+- ✅ Small file upload works end-to-end
+- ✅ Large file upload works end-to-end (S3 streaming)
+- ✅ Error cases return appropriate responses
+- ✅ Logs appear in CloudWatch
+- ✅ S3 files are created and cleaned up correctly
+- ✅ Response times are acceptable
+
+---
+
+## Milestone 14: Auto-Scaling Configuration
+
+**Goal**: Configure ECS auto-scaling for handling concurrent requests.
+
+### Tasks
+- [ ] Configure auto-scaling based on CPU utilization
+- [ ] Configure auto-scaling based on memory utilization
+- [ ] Set min/max task counts
+- [ ] Test scaling behavior
+- [ ] Monitor scaling metrics
+
+### Acceptance Criteria
+- ✅ Auto-scaling triggers when CPU > 70%
+- ✅ Auto-scaling triggers when memory > 80%
+- ✅ Tasks scale up and down correctly
+- ✅ Min task count maintained
+- ✅ Max task count not exceeded
+
+---
+
+## Milestone 15: Monitoring & Observability
+
+**Goal**: Set up comprehensive monitoring and alerting.
+
+### Tasks
+- [ ] Configure CloudWatch dashboards
+- [ ] Set up CloudWatch alarms (error rate, latency)
+- [ ] Add structured logging with request IDs
+- [ ] Add performance metrics (processing time)
+- [ ] Configure log retention policies
+
+### Acceptance Criteria
+- ✅ CloudWatch dashboard shows key metrics
+- ✅ Alarms trigger on high error rates
+- ✅ Alarms trigger on high latency
+- ✅ Logs include request IDs for tracing
+- ✅ Performance metrics are captured
+
+---
+
+## Milestone 16: Performance Optimization
+
+**Goal**: Optimize performance for large files and concurrent requests.
+
+### Tasks
+- [ ] Profile MP3 parser performance
+- [ ] Optimize frame detection algorithm
+- [ ] Tune Fargate CPU/memory allocation
+- [ ] Optimize S3 streaming (buffer sizes)
+- [ ] Add connection pooling for S3
+- [ ] Benchmark before/after improvements
+
+### Acceptance Criteria
+- ✅ Processing time improved for large files
+- ✅ Memory usage optimized
+- ✅ CPU utilization within target range
+- ✅ Benchmark results documented
+- ✅ Performance meets requirements
+
+---
+
+## Milestone 17: Security Hardening
+
+**Goal**: Implement security best practices.
+
+### Tasks
+- [ ] Review and tighten IAM permissions
+- [ ] Configure security groups properly
+- [ ] Add rate limiting
+- [ ] Add input sanitization
+- [ ] Review and fix security vulnerabilities
+- [ ] Add HTTPS/TLS (if not done earlier)
+
+### Acceptance Criteria
+- ✅ IAM permissions follow least privilege
+- ✅ Security groups restrict access appropriately
+- ✅ Rate limiting prevents abuse
+- ✅ No critical security vulnerabilities
+- ✅ HTTPS enabled (if applicable)
+
+---
+
+## Milestone 18: Documentation & Final Polish
+
+**Goal**: Complete documentation and finalize the solution.
+
+### Tasks
+- [ ] Update README with setup instructions
+- [ ] Document API endpoints
+- [ ] Document deployment process
+- [ ] Add code comments where needed
+- [ ] Review and update design document
+- [ ] Create runbook for operations
+
+### Acceptance Criteria
+- ✅ README is comprehensive and accurate
+- ✅ API documentation is complete
+- ✅ Deployment instructions are clear
+- ✅ Code is well-documented
+- ✅ Design document reflects final implementation
+
+---
+
+## Development Workflow
+
+### For Each Milestone
+
+1. **Create feature branch**: `git checkout -b milestone-X-description`
+2. **Write failing tests first** (TDD approach)
+3. **Implement feature** to make tests pass
+4. **Refactor** while keeping tests green
+5. **Verify acceptance criteria** are met
+6. **Create PR** with description of changes
+7. **Code review** and address feedback
+8. **Merge** to main branch
+
+### Testing Strategy
+
+- **Unit Tests**: Test individual services/modules in isolation
+- **Integration Tests**: Test API endpoints with test fixtures
+- **E2E Tests**: Test complete flow (optional, can be manual for MVP)
+
+### Definition of Done
+
+Each milestone is considered complete when:
+- ✅ All acceptance criteria are met
+- ✅ All tests pass (unit + integration)
+- ✅ Code is reviewed and approved
+- ✅ Documentation is updated
+- ✅ Changes are merged to main branch
+
+---
+
+## Notes
+
+- **Walking Skeleton First**: Milestones 1-3 focus on getting something working end-to-end
+- **Incremental Enhancement**: Each milestone builds on the previous one
+- **Test-Driven**: Write tests before implementation where possible
+- **Local First**: Develop and test locally before deploying to AWS
+- **Fail Fast**: If a milestone is blocked, identify and resolve blockers before proceeding

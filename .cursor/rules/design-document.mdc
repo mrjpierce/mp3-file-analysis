@@ -1,0 +1,769 @@
+---
+alwaysApply: true
+---
+# MP3 File Analysis Backend - Design Document
+
+## Overview
+
+This document describes the AWS infrastructure design for an MP3 file analysis backend that provides a synchronous API endpoint for counting MP3 frames.
+
+## Requirements
+
+### Functional Requirements
+- **Endpoint**: `POST /file-upload`
+- **Input**: MP3 file upload (multipart/form-data or binary)
+- **Output**: JSON response with frame count
+  ```json
+  {
+    "frameCount": <number>
+  }
+  ```
+- **Format Support**: MPEG Version 1 Audio Layer 3 (MP3) files
+- **Response Type**: Synchronous (response must be returned in the same HTTP request)
+
+### Non-Functional Requirements
+- **Scalability**: Must handle concurrent requests
+- **Performance**: Response time should be reasonable for typical MP3 files
+- **Reliability**: High availability and error handling
+
+## Architecture Decision: Synchronous Response with Scalability
+
+### Challenge
+The API specification requires a **synchronous response** (frame count returned in the same POST request), which precludes traditional async patterns like:
+- Webhooks
+- Polling endpoints
+- Queue-based processing with status checks
+
+However, we still need scalability to handle concurrent requests and very large files that may take longer than typical timeout limits.
+
+### Solution: ALB + Fargate + S3 Architecture
+
+**Primary Approach**: Application Load Balancer → Fargate Container (NestJS) → S3
+
+This architecture provides unlimited processing time while maintaining scalability and the ability to handle very large files through streaming.
+
+#### Why ALB + Fargate Works for This Use Case
+
+1. **No Timeout Limits**: 
+   - ALB supports up to 4,000 seconds (66 minutes) timeout (configurable)
+   - Fargate containers can run indefinitely
+   - Can process files that take hours if needed
+
+2. **Large File Support**:
+   - ALB supports payloads up to 1GB (with HTTP/2)
+   - S3 enables streaming for files larger than container memory
+   - Hybrid approach: small files processed directly, large files streamed via S3
+
+3. **Scalability**:
+   - ECS Auto-scaling handles concurrent requests
+   - Multiple Fargate tasks process files in parallel
+   - No cold start issues (containers stay warm)
+
+4. **Synchronous Response**: 
+   - HTTP connection held open during processing
+   - Response returned in same request, meeting API requirement
+   - Better control over request/response lifecycle
+
+5. **Development Experience**:
+   - NestJS provides robust framework for API development
+   - LocalStack enables local AWS service emulation
+   - Can run NestJS directly locally while using LocalStack services
+
+## Architecture Components
+
+### System Architecture Diagram
+
+```mermaid
+graph TB
+    Client[Client Application]
+    ALB[Application Load Balancer<br/>ALB<br/>Timeout: 4000s]
+    Fargate[ECS Fargate Tasks<br/>NestJS App]
+    S3[S3 Bucket<br/>Stream Storage]
+    CW[CloudWatch Logs]
+    
+    Client -->|POST /file-upload<br/>MP3 File up to 1GB| ALB
+    ALB -->|Forward Request| Fargate
+    Fargate -->|Stream large files| S3
+    Fargate -->|Logs| CW
+    Fargate -->|Process from S3 stream| S3
+    Fargate -->|JSON Response<br/>{frameCount: number}| ALB
+    ALB -->|Response| Client
+    
+    style Client fill:#e1f5ff
+    style ALB fill:#fff4e1
+    style Fargate fill:#ffe1f5
+    style S3 fill:#e1ffe1
+    style CW fill:#f5e1ff
+```
+
+### 1. Application Load Balancer (ALB)
+- **Purpose**: HTTP endpoint for file uploads
+- **Configuration**:
+  - Application Load Balancer (Layer 7)
+  - HTTP/2 enabled for better performance
+  - Idle timeout: 4,000 seconds (66 minutes) - configurable
+  - Payload size limit: Up to 1GB (with HTTP/2)
+  - Health checks configured for Fargate tasks
+  - Target group pointing to ECS service
+  - SSL/TLS termination (HTTPS)
+
+### 2. ECS Fargate Service
+- **Purpose**: Host NestJS application for MP3 processing
+- **Configuration**:
+  - **Platform**: Fargate (serverless containers)
+  - **CPU**: 1 vCPU (adjustable: 0.25 to 4 vCPU)
+  - **Memory**: 2GB - 4GB (adjustable: 512MB to 30GB)
+  - **Container Image**: Node.js 20.x with NestJS application
+  - **Auto-scaling**: Based on CPU/memory utilization or request count
+  - **Desired Count**: 1-10 tasks (auto-scales based on load)
+  - **Health Checks**: HTTP health check endpoint
+- **Processing Logic**:
+  1. Receive MP3 file from ALB
+  2. For large files: Stream to S3, then process from S3
+  3. For small files: Process directly from request stream
+  4. Parse MP3 file to count frames
+  5. Return JSON response with frame count
+  6. Handle errors appropriately
+
+### 3. S3 Bucket
+- **Purpose**: Temporary storage for large file streaming
+- **Configuration**:
+  - Lifecycle policy to delete files after processing (1 day TTL)
+  - Encryption at rest (SSE-S3)
+  - Private access (only Fargate tasks can access)
+  - Versioning disabled
+  - CORS configured if needed
+- **Use Case**: 
+  - Files > 50MB: Stream to S3 during upload, then process from S3
+  - Enables processing files larger than container memory
+  - Allows streaming without loading entire file into memory
+
+### 4. CloudWatch Logs
+- **Purpose**: Logging and monitoring
+- **Configuration**:
+  - ECS log driver configured for Fargate tasks
+  - Log group for NestJS application logs
+  - Log retention: 7-30 days
+  - Structured JSON logging from NestJS
+  - Request/response logging
+
+### 5. IAM Roles
+- **Fargate Task Role**: 
+  - CloudWatch Logs permissions (write)
+  - S3 read/write permissions (for file streaming)
+  - No other permissions needed
+- **Fargate Execution Role**:
+  - ECR permissions (pull container image)
+  - CloudWatch Logs permissions (create log streams)
+
+## Data Flow
+
+### Primary Flow (Small Files - Direct Processing)
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ALB as Application Load Balancer
+    participant Fargate as Fargate (NestJS)
+    participant CW as CloudWatch Logs
+    
+    Client->>ALB: POST /file-upload<br/>(MP3 file, <50MB)
+    ALB->>Fargate: Forward request
+    Fargate->>Fargate: Receive stream
+    Fargate->>Fargate: Parse MP3 file
+    Fargate->>Fargate: Count frames
+    Fargate->>CW: Log metrics
+    Fargate->>ALB: Return {frameCount: N}
+    ALB->>Client: 200 OK<br/>{frameCount: N}
+    
+    Note over Fargate: All processing happens<br/>synchronously within<br/>the HTTP connection
+```
+
+### Alternative Flow (Large Files - S3 Streaming)
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant ALB as Application Load Balancer
+    participant Fargate as Fargate (NestJS)
+    participant S3 as S3 Bucket
+    
+    Client->>ALB: POST /file-upload<br/>(MP3 file, >50MB)
+    ALB->>Fargate: Forward request
+    Fargate->>S3: Stream to S3
+    Fargate->>S3: Stream from S3
+    Fargate->>Fargate: Parse MP3 stream
+    Fargate->>Fargate: Count frames
+    Fargate->>S3: Delete from S3
+    Fargate->>ALB: Return {frameCount: N}
+    ALB->>Client: 200 OK<br/>{frameCount: N}
+    
+    Note over Fargate,S3: File streamed to S3,<br/>then processed from S3 stream
+```
+
+### NestJS Processing Flow
+
+```mermaid
+flowchart TD
+    Start[Request Received<br/>NestJS] --> Receive[Receive MP3 File<br/>Stream]
+    Receive --> Validate{Validate File}
+    Validate -->|Invalid| Error400[Return 400<br/>Bad Request]
+    Validate -->|Valid| CheckSize{Check File Size}
+    CheckSize -->|>50MB| StreamS3[Stream to S3<br/>then from S3]
+    CheckSize -->|<=50MB| ProcessDirect[Process from<br/>request stream]
+    StreamS3 --> Parse
+    ProcessDirect --> Parse[Parse MP3 Stream<br/>Find Frame Sync Patterns]
+    Parse --> Count[Count Frames]
+    Count -->|Parse Error| Error400
+    Count -->|Success| Success[Return 200 OK<br/>{frameCount: N}]
+    Count -->|Internal Error| Error500[Return 500<br/>Internal Server Error]
+    
+    style Start fill:#e1f5ff
+    style Success fill:#e1ffe1
+    style Error400 fill:#ffe1e1
+    style Error500 fill:#ffe1e1
+```
+
+## NestJS Implementation Plan
+
+### Application Structure
+
+```
+src/
+├── main.ts                    # Application entry point
+├── app.module.ts              # Root module
+├── file-upload/
+│   ├── file-upload.controller.ts    # POST /file-upload endpoint
+│   ├── file-upload.service.ts       # Business logic
+│   ├── file-upload.module.ts        # Module definition
+│   └── dto/
+│       ├── upload-response.dto.ts   # Response DTO
+│       └── error-response.dto.ts    # Error DTO
+├── mp3-parser/
+│   ├── mp3-parser.service.ts        # MP3 frame counting logic
+│   ├── mp3-parser.module.ts        # Module definition
+│   └── types.ts                     # MP3 parsing types
+├── s3/
+│   ├── s3.service.ts                # S3 streaming operations
+│   └── s3.module.ts                 # Module definition
+├── common/
+│   ├── filters/
+│   │   └── http-exception.filter.ts  # Global exception filter
+│   ├── interceptors/
+│   │   └── logging.interceptor.ts   # Request logging
+│   └── pipes/
+│       └── validation.pipe.ts       # Validation pipe
+└── config/
+    └── configuration.ts              # Environment configuration
+
+__tests__/
+├── file-upload.controller.spec.ts
+├── file-upload.service.spec.ts
+├── mp3-parser.service.spec.ts
+└── fixtures/
+    ├── sample.mp3
+    ├── large-sample.mp3
+    └── invalid.mp3
+
+Dockerfile                              # Container image
+docker-compose.yml                     # LocalStack + NestJS setup
+```
+
+### Core Components
+
+#### 1. File Upload Controller (`file-upload.controller.ts`)
+- **Responsibilities**:
+  - Handle POST `/file-upload` endpoint
+  - Receive multipart/form-data or binary file upload
+  - Determine if file should be streamed to S3 (based on size)
+  - Invoke service for processing
+  - Return JSON response with frame count
+  - Handle errors and format error responses
+
+#### 2. File Upload Service (`file-upload.service.ts`)
+- **Responsibilities**:
+  - Orchestrate file processing flow
+  - Decide between direct processing vs S3 streaming
+  - Coordinate between S3 service and MP3 parser
+  - Handle file cleanup (delete from S3 after processing)
+  - Error handling and logging
+
+#### 3. MP3 Parser Service (`mp3-parser.service.ts`)
+- **Responsibilities**:
+  - Parse MP3 file format (streaming support)
+  - Identify MPEG Version 1 Audio Layer 3 frames
+  - Count frames by finding sync patterns (0xFF 0xFB or 0xFF 0xFA)
+  - Handle frame headers and side information
+  - Return frame count
+  - Support both file streams and S3 streams
+
+#### 4. S3 Service (`s3.service.ts`)
+- **Responsibilities**:
+  - Stream file uploads to S3
+  - Create read streams from S3
+  - Delete files from S3 after processing
+  - Handle S3 errors and retries
+
+#### 5. Request/Response DTOs
+- TypeScript DTOs for:
+  - Upload response: `{ frameCount: number }`
+  - Error response: `{ error: string, code: string }`
+  - Request validation
+
+### MP3 Frame Counting Algorithm
+
+```mermaid
+flowchart LR
+    A[Read File Stream] --> B[Search for Sync Pattern<br/>0xFF 0xFB or 0xFF 0xFA]
+    B --> C{Found Sync?}
+    C -->|Yes| D[Parse Frame Header]
+    C -->|No| E[Continue Search]
+    D --> F[Extract Frame Length]
+    F --> G[Skip to Next Frame]
+    G --> H[Increment Counter]
+    H --> I{More Data?}
+    I -->|Yes| B
+    I -->|No| J[Return Count]
+    E --> I
+    
+    style A fill:#e1f5ff
+    style J fill:#e1ffe1
+```
+
+**Algorithm Details**:
+1. Read MP3 file as stream (not entire buffer)
+2. Search for frame sync pattern: `0xFF` followed by `0xFB` or `0xFA` (MPEG-1 Layer 3)
+3. Parse frame header to extract:
+   - Bitrate
+   - Sample rate
+   - Padding bit
+   - Frame length
+4. Skip to next frame position (using calculated frame length)
+5. Increment frame counter
+6. Continue reading stream until end of file
+7. Return total frame count
+
+**Streaming Implementation**:
+- Process file in chunks (e.g., 64KB buffers)
+- Don't load entire file into memory
+- Use Node.js streams for efficient memory usage
+- Works with both HTTP request streams and S3 read streams
+
+### Error Handling Strategy
+
+```mermaid
+flowchart TD
+    Error[Error Occurs] --> Type{Error Type}
+    Type -->|Invalid Format| E400[400 Bad Request<br/>Invalid MP3 format]
+    Type -->|File Too Large| E413[413 Payload Too Large<br/>File > 1GB ALB limit]
+    Type -->|Parse Error| E400
+    Type -->|Internal Error| E500[500 Internal Server Error<br/>Unexpected error]
+    
+    E400 --> Log[Log to CloudWatch]
+    E413 --> Log
+    E500 --> Log
+    
+    style Error fill:#ffe1e1
+    style Log fill:#f5e1ff
+    style E400 fill:#ffe1e1
+    style E413 fill:#ffe1e1
+    style E500 fill:#ffe1e1
+```
+
+### Response Format
+
+**Success Response**:
+```json
+{
+  "frameCount": 12345
+}
+```
+
+**Error Response**:
+```json
+{
+  "error": "Invalid MP3 file format",
+  "code": "INVALID_FORMAT"
+}
+```
+
+## Scalability Strategy
+
+### Horizontal Scaling
+
+```mermaid
+graph TB
+    Traffic[Concurrent Requests<br/>Traffic] --> ALB[Application Load Balancer<br/>ALB]
+    ALB --> T1[Fargate Task 1<br/>NestJS]
+    ALB --> T2[Fargate Task 2<br/>NestJS]
+    ALB --> T3[Fargate Task 3<br/>NestJS]
+    ALB --> TN[Fargate Task N<br/>NestJS]
+    
+    T1 --> F1[File 1<br/>Process]
+    T2 --> F2[File 2<br/>Process]
+    T3 --> F3[File 3<br/>Process]
+    TN --> FN[File N<br/>Process]
+    
+    style Traffic fill:#e1f5ff
+    style ALB fill:#fff4e1
+    style T1 fill:#ffe1f5
+    style T2 fill:#ffe1f5
+    style T3 fill:#ffe1f5
+    style TN fill:#ffe1f5
+```
+
+- **ECS Auto-scaling**: Automatically scales Fargate tasks based on:
+  - CPU utilization (target: 70%)
+  - Memory utilization (target: 80%)
+  - Request count (optional: target tracking)
+- **ALB**: Distributes requests across healthy Fargate tasks
+- **No manual scaling required**
+- **Scaling Limits**: Configurable min/max tasks (e.g., 1-20 tasks)
+
+### Performance Optimization
+
+1. **Fargate Resource Tuning**: 
+   - CPU: Start with 1 vCPU, scale to 2-4 vCPU for CPU-intensive processing
+   - Memory: 2GB-4GB (more memory allows larger in-memory buffers)
+   - Test different configurations to find optimal cost/performance
+   - Monitor CloudWatch metrics to optimize
+
+2. **Streaming Processing**: 
+   - Process MP3 file in chunks (64KB-1MB buffers)
+   - Use Node.js streams for all file operations
+   - Stream directly from HTTP request or S3
+   - Reduces memory footprint, enables processing files larger than container memory
+
+3. **Efficient MP3 Parsing**: 
+   - Use optimized algorithms for frame detection
+   - Minimize buffer allocations (reuse buffers)
+   - Early exit on invalid formats
+   - Binary search for sync patterns in large files
+
+4. **Hybrid Processing Strategy**:
+   - Small files (<50MB): Process directly from request stream
+   - Large files (>50MB): Stream to S3, then process from S3
+   - Reduces S3 operations for small files (cost optimization)
+
+5. **Connection Pooling** (S3):
+   - Reuse S3 client connections
+   - Configure appropriate timeouts
+   - Enable HTTP/2 for better performance
+
+### Cost Optimization
+
+```mermaid
+graph TD
+    Cost[Fargate Cost Factors] --> Requests[Number of Tasks]
+    Cost --> Duration[Task Runtime Hours]
+    Cost --> Resources[CPU/Memory Resources]
+    
+    Requests --> Pricing1[$0.04 per vCPU-hour]
+    Duration --> Pricing2[$0.00001156 per GB-hour]
+    Resources --> Pricing2
+    
+    Pricing1 --> Total[Total Cost]
+    Pricing2 --> Total
+    
+    style Cost fill:#fff4e1
+    style Total fill:#e1ffe1
+```
+
+- **Fargate**: Pay per vCPU-hour and GB-hour (running tasks)
+- **ALB**: Pay per ALB-hour and LCU (Load Balancer Capacity Units)
+- **S3**: Pay per storage (GB-month) and request (PUT/GET operations)
+- **CloudWatch**: Pay per log ingestion and storage
+- **Cost Optimization**: 
+  - Scale down to 0 tasks during low traffic (if acceptable)
+  - Use smaller task sizes when possible
+  - Optimize S3 usage (only for large files)
+  - Set appropriate log retention periods
+
+## Security Considerations
+
+1. **File Size Limits**: 
+   - Enforce maximum file size (1GB - ALB limit with HTTP/2)
+   - Reject files exceeding limit with 413 error
+   - Use Content-Length header for early validation
+
+2. **File Type Validation**: 
+   - Verify file is actually MP3 format
+   - Check magic bytes/file signature (first few bytes)
+   - Reject non-MP3 files early (before processing)
+
+3. **Rate Limiting**: 
+   - Implement rate limiting in NestJS (e.g., @nestjs/throttler)
+   - ALB request rate limiting (optional)
+   - Per-IP or per-API-key rate limits
+
+4. **Input Validation**: 
+   - Validate file headers before processing
+   - Sanitize S3 object keys if stored
+   - Validate Content-Type header
+
+5. **Resource Limits**: 
+   - Fargate CPU/memory limits prevent resource exhaustion
+   - ALB timeout limits prevent long-running connections (configurable)
+   - Container health checks ensure unhealthy tasks are replaced
+
+6. **IAM Permissions**: 
+   - Least privilege principle
+   - Fargate task role only has S3 and CloudWatch permissions needed
+   - No unnecessary permissions
+
+7. **Network Security**:
+   - ALB in private subnets (optional)
+   - Security groups restrict traffic
+   - HTTPS/TLS encryption in transit
+
+## Monitoring and Observability
+
+### CloudWatch Metrics
+
+```mermaid
+graph TD
+    Metrics[CloudWatch Metrics] --> ECS[ECS/Fargate Metrics]
+    Metrics --> ALB[ALB Metrics]
+    Metrics --> S3[S3 Metrics]
+    
+    ECS --> TaskCount[Task Count]
+    ECS --> CPU[CPU Utilization]
+    ECS --> Memory[Memory Utilization]
+    ECS --> Health[Health Check Status]
+    
+    ALB --> RequestCount[Request Count]
+    ALB --> Latency[Latency]
+    ALB --> ErrorRate[4XX/5XX Errors]
+    
+    S3 --> PutCount[PUT Requests]
+    S3 --> GetCount[GET Requests]
+    S3 --> Storage[Storage Size]
+    
+    style Metrics fill:#f5e1ff
+```
+
+1. **ECS/Fargate Metrics**:
+   - Task count (running, pending, stopping)
+   - CPU utilization (average, max)
+   - Memory utilization (average, max)
+   - Request count per task
+   - Health check status
+
+2. **ALB Metrics**:
+   - Request count
+   - Latency (p50, p95, p99)
+   - 4XX/5XX error rates
+   - Target response time
+   - Active connection count
+   - Healthy/unhealthy target count
+
+3. **S3 Metrics**:
+   - PUT request count (file uploads)
+   - GET request count (file reads)
+   - Storage size
+   - Request latency
+
+4. **CloudWatch Logs**:
+   - NestJS application logs (structured JSON)
+   - Request/response logging
+   - Error traces with stack traces
+   - Request IDs for tracing
+   - Performance metrics (processing time per file)
+
+### Alarms
+
+1. **High Error Rate**: Alert when error rate > 5%
+2. **High Latency**: Alert when p95 latency > 60 seconds
+3. **Unhealthy Tasks**: Alert when unhealthy task count > 0
+4. **ALB 5XX Errors**: Alert on server errors
+5. **High CPU/Memory**: Alert when utilization > 80% for extended period
+6. **Task Failures**: Alert on task failures or crashes
+
+## Local Development Setup
+
+### LocalStack for AWS Services
+
+LocalStack emulates AWS services locally, allowing development without AWS account:
+
+**Services Emulated**:
+- S3 (for file storage)
+- CloudWatch Logs (for logging)
+- IAM (for role simulation)
+
+**Services NOT Emulated** (run directly):
+- Fargate/ECS (run NestJS directly)
+- ALB (use NestJS dev server)
+
+### Development Architecture
+
+```mermaid
+graph TB
+    Dev[Developer Machine] --> NestJS[NestJS App<br/>Direct :3000]
+    Dev --> LocalStack[LocalStack Docker<br/>S3, CloudWatch<br/>:4566]
+    
+    NestJS -->|AWS_ENDPOINT=http://localhost:4566| LocalStack
+    LocalStack --> S3[S3 Bucket<br/>Emulated]
+    
+    style Dev fill:#e1f5ff
+    style NestJS fill:#ffe1f5
+    style LocalStack fill:#e1ffe1
+    style S3 fill:#fff4e1
+```
+
+### Setup Instructions
+
+1. **Start LocalStack**:
+   ```bash
+   docker-compose up -d localstack
+   ```
+
+2. **Configure Environment**:
+   ```bash
+   AWS_ENDPOINT=http://localhost:4566
+   AWS_ACCESS_KEY_ID=test
+   AWS_SECRET_ACCESS_KEY=test
+   AWS_REGION=us-east-1
+   S3_BUCKET_NAME=mp3-uploads-local
+   ```
+
+3. **Create S3 Bucket in LocalStack**:
+   ```bash
+   aws --endpoint-url=http://localhost:4566 s3 mb s3://mp3-uploads-local
+   ```
+
+4. **Run NestJS Application**:
+   ```bash
+   npm run start:dev
+   ```
+
+5. **Test Endpoint**:
+   ```bash
+   curl -X POST http://localhost:3000/file-upload \
+     -F "file=@sample.mp3"
+   ```
+
+### Docker Compose Configuration
+
+```yaml
+version: '3.8'
+services:
+  localstack:
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,logs
+      - DEBUG=1
+    volumes:
+      - "./localstack-data:/var/lib/localstack"
+  
+  # Optional: Run NestJS in Docker for consistency
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - AWS_ENDPOINT=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    depends_on:
+      - localstack
+```
+
+## Implementation Phases
+
+### Phase 1: MVP (Local Development)
+1. ✅ Set up LocalStack for S3 and CloudWatch
+2. ✅ NestJS application with file upload endpoint
+3. ✅ MP3 frame counting logic
+4. ✅ Basic error handling
+5. ✅ Unit tests for MP3 parser
+6. ✅ Local development workflow
+
+### Phase 2: AWS Infrastructure
+1. ✅ CDK stack for ALB + Fargate + S3
+2. ✅ ECS Fargate service definition
+3. ✅ Container image build and push to ECR
+4. ✅ ALB configuration and target groups
+5. ✅ IAM roles and permissions
+6. ✅ CloudWatch logging setup
+
+### Phase 3: Optimization
+1. Performance tuning (CPU/memory allocation)
+2. Enhanced error handling with specific error codes
+3. Monitoring and alarms
+4. Load testing with sample MP3 files
+5. Integration tests
+6. S3 streaming optimization
+
+### Phase 4: Production Readiness
+1. Security hardening (security groups, IAM)
+2. Documentation
+3. Cost optimization review
+4. Performance benchmarking
+5. Deployment automation (CI/CD)
+6. Health check endpoints
+
+## Technology Stack
+
+### Application
+- **Framework**: NestJS (Node.js framework)
+- **Runtime**: Node.js 20.x
+- **Language**: TypeScript
+- **MP3 Parsing**: Custom implementation (streaming support)
+- **File Upload**: Multer or NestJS file upload handling
+- **AWS SDK**: @aws-sdk/client-s3 (v3)
+
+### Infrastructure
+- **Infrastructure as Code**: AWS CDK (TypeScript)
+- **Container Platform**: ECS Fargate
+- **Load Balancer**: Application Load Balancer (ALB)
+- **Storage**: S3 (for large file streaming)
+- **Monitoring**: CloudWatch Logs and Metrics
+
+### Development
+- **Local AWS Emulation**: LocalStack
+- **Containerization**: Docker
+- **Testing**: Jest
+- **Linting**: ESLint
+- **Formatting**: Prettier
+- **Package Manager**: npm
+
+### Deployment
+- **Container Registry**: Amazon ECR
+- **Deployment**: AWS CDK CLI
+- **CI/CD**: (Optional) GitHub Actions, GitLab CI, or AWS CodePipeline
+
+## Open Questions
+
+1. **Maximum File Size**: What is the expected maximum MP3 file size? (Determines if S3 integration needed)
+2. **Concurrent Request Volume**: Expected peak concurrent requests? (For capacity planning)
+3. **Response Time SLA**: What is the acceptable response time? (For timeout configuration)
+4. **File Format Validation**: How strict should format validation be? (Reject all non-MP3 or allow some variations)
+
+## Conclusion
+
+The ALB + Fargate + S3 architecture provides the best balance of:
+- ✅ Synchronous response (meets API requirement)
+- ✅ Unlimited processing time (no 15-minute timeout limit)
+- ✅ Large file support (up to 1GB via ALB, larger via S3 streaming)
+- ✅ Auto-scaling (ECS handles concurrent requests automatically)
+- ✅ Better control over processing environment
+- ✅ Local development with LocalStack (no AWS account needed)
+- ✅ Production-ready framework (NestJS)
+
+### Key Advantages Over Lambda
+
+1. **No Timeout Limits**: Can process files that take hours
+2. **Large File Support**: Stream files larger than container memory via S3
+3. **Better Development Experience**: Run NestJS locally with LocalStack
+4. **More Control**: Full control over container resources and configuration
+5. **Framework Benefits**: NestJS provides structure, dependency injection, and testing utilities
+
+### Trade-offs
+
+- **Cost**: Pay for running containers (even when idle) vs Lambda's pay-per-request
+- **Complexity**: More infrastructure to manage (ECS, ALB, Fargate)
+- **Cold Starts**: Minimal (containers stay warm longer than Lambda)
+
+The architecture is designed to handle the synchronous response requirement while maintaining scalability through ECS auto-scaling and supporting very large files through S3 streaming.

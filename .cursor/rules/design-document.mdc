@@ -203,6 +203,27 @@ sequenceDiagram
 
 ### NestJS Processing Flow
 
+**Current Implementation** (Milestone 3):
+```mermaid
+flowchart TD
+    Start[Request Received<br/>NestJS] --> Receive[Receive MP3 File<br/>Buffer]
+    Receive --> DetectType[Detect MP3 Type]
+    DetectType --> GetParser[Get Parser from Registry]
+    GetParser --> Validate[Validate File Integrity]
+    Validate -->|Invalid| Error400[Return 400<br/>Bad Request]
+    Validate -->|Valid| Parse[Parse MP3 Buffer<br/>Find Frame Sync Patterns]
+    Parse --> Count[Count Frames]
+    Count -->|Parse Error| Error400
+    Count -->|Success| Success[Return 200 OK<br/>{frameCount: N}]
+    Count -->|Internal Error| Error500[Return 500<br/>Internal Server Error]
+    
+    style Start fill:#e1f5ff
+    style Success fill:#e1ffe1
+    style Error400 fill:#ffe1e1
+    style Error500 fill:#ffe1e1
+```
+
+**Future Implementation** (Milestone 5+):
 ```mermaid
 flowchart TD
     Start[Request Received<br/>NestJS] --> Receive[Receive MP3 File<br/>Stream]
@@ -233,16 +254,17 @@ src/
 ├── main.ts                    # Application entry point
 ├── app.module.ts              # Root module
 ├── file-upload/
-│   ├── file-upload.controller.ts    # POST /file-upload endpoint
-│   ├── file-upload.service.ts       # Business logic
-│   ├── file-upload.module.ts        # Module definition
+│   ├── file-upload.controller.ts    # POST /file-upload endpoint ✅
+│   ├── file-upload.module.ts        # Module definition ✅
 │   └── dto/
-│       ├── upload-response.dto.ts   # Response DTO
-│       └── error-response.dto.ts    # Error DTO
-├── mp3-parser/
-│   ├── mp3-parser.service.ts        # MP3 frame counting logic
-│   ├── mp3-parser.module.ts        # Module definition
-│   └── types.ts                     # MP3 parsing types
+│       └── upload-response.dto.ts   # Response DTO ✅
+├── mp3-analysis/              # (Renamed from mp3-parser/)
+│   ├── mp3-parser.ts              # Base abstract parser class ✅
+│   ├── mpeg1-layer3-parser.service.ts  # MPEG-1 Layer 3 parser ✅
+│   ├── mp3-type-detector.ts        # File type detection ✅
+│   ├── parser-registry.service.ts  # Parser registry ✅
+│   ├── mp3-frame-constants.ts      # MP3 constants ✅
+│   └── mp3-analysis.module.ts      # Module definition ✅
 ├── s3/
 │   ├── s3.service.ts                # S3 streaming operations
 │   └── s3.module.ts                 # Module definition
@@ -288,14 +310,15 @@ docker-compose.yml                     # LocalStack + NestJS setup
   - Handle file cleanup (delete from S3 after processing)
   - Error handling and logging
 
-#### 3. MP3 Parser Service (`mp3-parser.service.ts`)
+#### 3. MP3 Parser Service (`mp3-parser.service.ts` and related)
 - **Responsibilities**:
-  - Parse MP3 file format (streaming support)
+  - Parse MP3 file format (streaming support - not yet implemented)
   - Identify MPEG Version 1 Audio Layer 3 frames
   - Count frames by finding sync patterns (0xFF 0xFB or 0xFF 0xFA)
   - Handle frame headers and side information
   - Return frame count
-  - Support both file streams and S3 streams
+  - Validate file integrity and detect corruption (validate() method)
+  - Support both file streams and S3 streams (streaming not yet implemented)
 
 #### 4. S3 Service (`s3.service.ts`)
 - **Responsibilities**:
@@ -306,9 +329,9 @@ docker-compose.yml                     # LocalStack + NestJS setup
 
 #### 5. Request/Response DTOs
 - TypeScript DTOs for:
-  - Upload response: `{ frameCount: number }`
-  - Error response: `{ error: string, code: string }`
-  - Request validation
+  - Upload response: `{ frameCount: number }` - ✅ Implemented
+  - Error response: `{ error: string, code: string }` - ⚠️ Not yet implemented (using plain BadRequestException messages)
+  - Request validation - ✅ Basic validation implemented (file required, type detection)
 
 ### MP3 Frame Counting Algorithm
 

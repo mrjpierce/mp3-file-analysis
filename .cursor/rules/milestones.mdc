@@ -30,11 +30,11 @@ This document outlines the development milestones for the MP3 file analysis back
 **Goal**: Get a minimal working endpoint that accepts a file and returns a response.
 
 ### Tasks
-- [ ] Create NestJS application with basic module structure
-- [ ] Implement `POST /file-upload` endpoint (controller)
-- [ ] Accept file upload (multipart/form-data)
-- [ ] Return hardcoded JSON response: `{ "frameCount": 42 }`
-- [ ] Add basic error handling for missing file
+- [x] Create NestJS application with basic module structure
+- [x] Implement `POST /file-upload` endpoint (controller)
+- [x] Accept file upload (multipart/form-data)
+- [x] Return hardcoded JSON response: `{ "frameCount": 42 }`
+- [x] Add basic error handling for missing file
 
 ### Acceptance Criteria
 - ✅ NestJS app starts on port 3000

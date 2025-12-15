@@ -10,6 +10,7 @@ import {
   NoValidFramesError,
   Mp3AnalysisError,
 } from "./mp3-analysis.errors";
+import { Readable } from "stream";
 
 /**
  * Abstract class for MP3 parsers
@@ -165,6 +166,219 @@ export abstract class Mp3Parser implements IMp3Parser {
     }
 
     return frameCount;
+  }
+
+  /**
+   * Validates file integrity and detects corruption from a stream
+   * Reads initial portion of stream to perform validation
+   * @param stream - The MP3 file stream
+   * @throws Mp3AnalysisError if the file is corrupted or invalid
+   */
+  async validateStream(stream: Readable): Promise<void> {
+    // Read enough data for validation (first ~64KB should be sufficient)
+    const validationBufferSize = 64 * 1024;
+    const chunks: Buffer[] = [];
+    let totalBytes = 0;
+
+    return new Promise((resolve, reject) => {
+      const onData = (chunk: Buffer) => {
+        chunks.push(chunk);
+        totalBytes += chunk.length;
+        if (totalBytes >= validationBufferSize) {
+          stream.removeListener("data", onData);
+          stream.removeListener("error", onError);
+          stream.removeListener("end", onEnd);
+          // Pause the stream to prevent further reading
+          stream.pause();
+          const buffer = Buffer.concat(chunks);
+          try {
+            this.validate(buffer);
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        }
+      };
+
+      const onError = (error: Error) => {
+        stream.removeListener("data", onData);
+        stream.removeListener("error", onError);
+        stream.removeListener("end", onEnd);
+        reject(error);
+      };
+
+      const onEnd = () => {
+        stream.removeListener("data", onData);
+        stream.removeListener("error", onError);
+        stream.removeListener("end", onEnd);
+        const buffer = Buffer.concat(chunks);
+        if (buffer.length === 0) {
+          reject(new EmptyBufferError());
+          return;
+        }
+        try {
+          this.validate(buffer);
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      };
+
+      stream.on("data", onData);
+      stream.on("error", onError);
+      stream.on("end", onEnd);
+    });
+  }
+
+  /**
+   * Counts MP3 frames in a stream
+   * Processes the stream in chunks to avoid loading entire file into memory
+   * @param stream - The MP3 file stream
+   * @returns The number of frames found
+   * @throws Mp3AnalysisError if the file is not valid for this parser's format
+   */
+  async countFramesStream(stream: Readable): Promise<number> {
+    // Use a sliding window buffer to handle sync patterns across chunk boundaries
+    // Keep last 4 bytes from previous chunk (max frame header size + 1 for sync detection)
+    const windowSize = 4;
+    let windowBuffer = Buffer.alloc(0);
+    let frameCount = 0;
+    let id3v2Skipped = false;
+
+    return new Promise((resolve, reject) => {
+      const onData = (chunk: Buffer) => {
+        try {
+          // Combine window buffer with new chunk
+          const buffer = Buffer.concat([windowBuffer, chunk]);
+
+          // Skip ID3v2 tag on first chunk only
+          if (!id3v2Skipped && buffer.length >= COMMON_MP3_CONSTANTS.ID3V2_HEADER_SIZE) {
+            const skipBytes = Mp3Parser.skipId3v2Tag(buffer);
+            if (skipBytes > 0) {
+              id3v2Skipped = true;
+              // Adjust buffer to start after ID3v2 tag
+              windowBuffer = buffer.subarray(skipBytes);
+              // Process the adjusted buffer
+              const result = this.processChunkForFrames(
+                windowBuffer,
+                frameCount,
+              );
+              frameCount = result.frameCount;
+              // Keep last windowSize bytes for next chunk
+              if (windowBuffer.length >= windowSize) {
+                windowBuffer = windowBuffer.subarray(windowBuffer.length - windowSize);
+              }
+              return;
+            }
+            id3v2Skipped = true;
+          }
+
+          // Process chunk for frames
+          const result = this.processChunkForFrames(buffer, frameCount);
+          frameCount = result.frameCount;
+
+          // Keep last windowSize bytes for next chunk (to handle sync patterns across boundaries)
+          if (buffer.length >= windowSize) {
+            windowBuffer = buffer.subarray(buffer.length - windowSize);
+          } else {
+            windowBuffer = buffer;
+          }
+        } catch (error) {
+          stream.removeListener("data", onData);
+          stream.removeListener("error", onError);
+          stream.removeListener("end", onEnd);
+          reject(error);
+        }
+      };
+
+      const onError = (error: Error) => {
+        stream.removeListener("data", onData);
+        stream.removeListener("error", onError);
+        stream.removeListener("end", onEnd);
+        reject(error);
+      };
+
+      const onEnd = () => {
+        stream.removeListener("data", onData);
+        stream.removeListener("error", onError);
+        stream.removeListener("end", onEnd);
+
+        // Process any remaining data in window buffer
+        if (windowBuffer.length > 0) {
+          try {
+            const result = this.processChunkForFrames(windowBuffer, frameCount);
+            frameCount = result.frameCount;
+          } catch (error) {
+            // If it's a NoValidFramesError and we have frames, that's okay
+            // (window buffer might not have complete frames)
+            if (!(error instanceof NoValidFramesError) || frameCount === 0) {
+              reject(error);
+              return;
+            }
+          }
+        }
+
+        if (frameCount === 0) {
+          reject(
+            new NoValidFramesError(
+              `Invalid MP3 file: no valid ${this.getFormatDescription()} frames found`,
+            ),
+          );
+          return;
+        }
+
+        resolve(frameCount);
+      };
+
+      stream.on("data", onData);
+      stream.on("error", onError);
+      stream.on("end", onEnd);
+    });
+  }
+
+  /**
+   * Processes a chunk of data to count frames
+   * Helper method for stream processing
+   * @param buffer - The buffer chunk to process
+   * @param currentFrameCount - Current frame count before processing this chunk
+   * @returns Object with updated frame count
+   */
+  private processChunkForFrames(
+    buffer: Buffer,
+    currentFrameCount: number,
+  ): { frameCount: number } {
+    let position = 0;
+    let frameCount = currentFrameCount;
+
+    while (position < buffer.length - this.getMinFrameSize()) {
+      if (this.isFrameSync(buffer, position)) {
+        if (this.isFormatSpecificFrame(buffer, position)) {
+          try {
+            const frameLength = this.parseFrameHeader(buffer, position);
+            if (frameLength > 0) {
+              // Check if we have enough data in this chunk for the full frame
+              // If not, we'll handle it in the next chunk (window buffer)
+              if (position + frameLength <= buffer.length) {
+                if (!this.isHeaderFrame(buffer, position)) {
+                  frameCount++;
+                }
+                position += frameLength;
+                continue;
+              } else {
+                // Frame extends beyond this chunk, will be handled in next chunk
+                // Stop processing here to preserve the partial frame in window buffer
+                break;
+              }
+            }
+          } catch {
+            // Invalid frame, continue searching
+          }
+        }
+      }
+      position++;
+    }
+
+    return { frameCount };
   }
 
   /**

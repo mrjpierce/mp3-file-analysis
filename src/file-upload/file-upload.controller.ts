@@ -8,6 +8,7 @@ import {
   Logger,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
+import { Readable } from "stream";
 import { UploadResponseDto } from "./dto/upload-response.dto";
 import { Inject } from "@nestjs/common";
 import { Mp3TypeDetector } from "../mp3-analysis/mp3-type-detector";
@@ -61,11 +62,18 @@ export class FileUploadController {
     }
 
     try {
-      // Validate file integrity and detect corruption
-      parser.validate(file.buffer);
+      // Create stream from buffer for processing
+      const processingStream = Readable.from(file.buffer);
 
-      // Count frames using the appropriate parser
-      const frameCount = await parser.countFrames(file.buffer);
+      // Validate file integrity and detect corruption using stream
+      await parser.validateStream(processingStream);
+
+      // Create stream for frame counting
+      const countingStream = Readable.from(file.buffer);
+
+      // Count frames using stream-based method
+      const frameCount = await parser.countFramesStream(countingStream);
+
 
       return { frameCount };
     } catch (error) {

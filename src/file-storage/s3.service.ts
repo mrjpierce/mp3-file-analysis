@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
 import {
   S3Client,
   PutObjectCommand,
@@ -22,7 +22,7 @@ import {
 } from "./errors";
 
 @Injectable()
-export class S3Service implements OnModuleInit {
+export class S3Service implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(S3Service.name);
   private readonly s3Client: S3Client;
   private readonly bucketName: string;
@@ -48,6 +48,11 @@ export class S3Service implements OnModuleInit {
   async onModuleInit() {
     await this.ensureBucketExists();
     await this.ensureLifecyclePolicy();
+  }
+
+  async onModuleDestroy() {
+    // Destroy S3Client to close HTTP connections
+    this.s3Client.destroy();
   }
 
   /**

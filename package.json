@@ -21,10 +21,15 @@
     "cdk:synth": "cdk synth",
     "cdk:deploy": "cdk deploy",
     "cdk:destroy": "cdk destroy",
-    "cdk:diff": "cdk diff"
+    "cdk:diff": "cdk diff",
+    "localstack:up": "docker-compose -f .docker/docker-compose.yml up -d localstack",
+    "localstack:down": "docker-compose -f .docker/docker-compose.yml down",
+    "localstack:logs": "docker-compose -f .docker/docker-compose.yml logs -f localstack"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.948.0",
     "@nestjs/common": "^10.4.8",
+    "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^10.4.8",
     "@nestjs/platform-express": "^10.4.8",
     "aws-cdk-lib": "^2.232.2",
@@ -48,6 +53,7 @@
     "jest": "^30.2.0",
     "prettier": "^3.7.4",
     "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.49.0"
   }

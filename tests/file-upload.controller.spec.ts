@@ -6,7 +6,7 @@ import { BadRequestException, PayloadTooLargeException } from "@nestjs/common";
 import { FileUploadController } from "../src/file-upload/file-upload.controller";
 import { FileUploadModule } from "../src/file-upload/file-upload.module";
 import { ErrorResponseDto } from "../src/common/dto/error-response.dto";
-import { FileUploadErrorCode } from "../src/file-upload/file-upload-errors";
+import { FileUploadErrorCode } from "../src/file-upload/file-upload.errors";
 
 describe("FileUploadController", () => {
   let controller: FileUploadController;

@@ -147,4 +147,3 @@ export class Mp3TypeDetector {
     return LAYER_MAP.get(layer) ?? Mp3Layer.Unknown;
   }
 }
-

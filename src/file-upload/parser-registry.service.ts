@@ -52,4 +52,3 @@ export class ParserRegistryService implements IParserRegistry {
     return `${version}:${layer}`;
   }
 }
-

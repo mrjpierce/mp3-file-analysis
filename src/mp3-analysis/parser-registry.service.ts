@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { IMp3Parser } from "./mp3-parser.interface";
 import { IParserRegistry } from "./parser-registry.interface";
 import { Mp3TypeInfo } from "./mp3-type-detector";
+import { ParserAlreadyRegisteredError } from "./mp3-analysis.errors";
 
 /**
  * Registry service for MP3 parsers
@@ -26,7 +27,7 @@ export class ParserRegistryService implements IParserRegistry {
    * @param version - MPEG version
    * @param layer - MPEG layer
    * @param parser - The parser implementation
-   * @throws Error if a parser is already registered for this version/layer combination
+   * @throws ParserAlreadyRegisteredError if a parser is already registered for this version/layer combination
    */
   registerParser(
     version: Mp3TypeInfo["version"],
@@ -35,7 +36,7 @@ export class ParserRegistryService implements IParserRegistry {
   ): void {
     const key = this.getKey(version, layer);
     if (this.parsers.has(key)) {
-      throw new Error(
+      throw new ParserAlreadyRegisteredError(
         `Parser already registered for ${version} ${layer}. Cannot register duplicate parser.`,
       );
     }

@@ -1,11 +1,16 @@
-import { Injectable, BadRequestException } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { Mp3Parser } from "./mp3-parser";
 import {
   COMMON_MP3_CONSTANTS,
   MPEG1_LAYER3_CONSTANTS,
   MPEG1_LAYER3_BITRATES,
   MPEG1_SAMPLE_RATES,
-} from "./mp3-frame-constants";
+} from "./mp3-frame.consts";
+import {
+  CorruptedFrameHeaderError,
+  CorruptedFrameError,
+  Mp3AnalysisError,
+} from "./mp3-analysis.errors";
 
 /**
  * Parser for MPEG Version 1 Audio Layer 3 files
@@ -67,12 +72,15 @@ export class Mpeg1Layer3ParserService extends Mp3Parser {
    * @param buffer - The buffer containing the frame
    * @param position - Position of the frame sync pattern
    * @returns Frame length in bytes
+   * @throws Mp3AnalysisError if the frame header is invalid
    */
   protected parseFrameHeader(buffer: Buffer, position: number): number {
     if (
       position + COMMON_MP3_CONSTANTS.FRAME_HEADER_SIZE > buffer.length
     ) {
-      throw new Error("Insufficient data for frame header");
+      throw new CorruptedFrameHeaderError(
+        "Insufficient data for frame header",
+      );
     }
 
     const header = buffer.readUInt32BE(position);
@@ -85,7 +93,7 @@ export class Mpeg1Layer3ParserService extends Mp3Parser {
     const sampleRate = MPEG1_SAMPLE_RATES[sampleRateIndex];
 
     if (bitrate === 0 || sampleRate === 0) {
-      throw new Error("Invalid bitrate or sample rate");
+      throw new CorruptedFrameHeaderError("Invalid bitrate or sample rate");
     }
 
     const frameLength =
@@ -117,7 +125,7 @@ export class Mpeg1Layer3ParserService extends Mp3Parser {
    * Validates file integrity and detects corruption
    * Performs common validation first, then MPEG-1 Layer 3 specific checks
    * @param buffer - The MP3 file buffer
-   * @throws BadRequestException if the file is corrupted or invalid
+   * @throws Mp3AnalysisError if the file is corrupted or invalid
    */
   validate(buffer: Buffer): void {
     // Perform common validation checks first (empty buffer, file size, frame alignment, etc.)
@@ -149,7 +157,7 @@ export class Mpeg1Layer3ParserService extends Mp3Parser {
 
             // Detect invalid bitrate/sample rate combinations that indicate corruption
             if (bitrate === 0 || sampleRate === 0) {
-              throw new BadRequestException(
+              throw new CorruptedFrameHeaderError(
                 "Invalid MP3 file: corrupted frame header (invalid bitrate or sample rate)",
               );
             }
@@ -177,11 +185,12 @@ export class Mpeg1Layer3ParserService extends Mp3Parser {
             checkedFrames++;
             continue;
           } catch (error) {
-            if (error instanceof BadRequestException) {
+            // Re-throw Mp3AnalysisError instances
+            if (error instanceof Mp3AnalysisError) {
               throw error;
             }
-            // Frame parsing errors indicate corruption
-            throw new BadRequestException(
+            // All other errors would be due to frame parsing, indicating corruption
+            throw new CorruptedFrameError(
               `Invalid MPEG-1 Layer 3 file: corrupted frame at position ${position}`,
             );
           }

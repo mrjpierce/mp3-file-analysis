@@ -2,8 +2,11 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { Readable } from "stream";
 import { readFileSync } from "fs";
 import { join } from "path";
+import { BadRequestException, PayloadTooLargeException } from "@nestjs/common";
 import { FileUploadController } from "../src/file-upload/file-upload.controller";
 import { FileUploadModule } from "../src/file-upload/file-upload.module";
+import { ErrorResponseDto } from "../src/common/dto/error-response.dto";
+import { FileUploadErrorCode } from "../src/file-upload/file-upload-errors";
 
 describe("FileUploadController", () => {
   let controller: FileUploadController;
@@ -50,7 +53,7 @@ describe("FileUploadController", () => {
       expect(typeof result.frameCount).toBe("number");
     });
 
-    it("should throw BadRequestException for invalid MP3 file", async () => {
+    it("should throw BadRequestException with structured error for invalid MP3 file", async () => {
       const mockFile: Express.Multer.File = {
         fieldname: "file",
         originalname: "test.txt",
@@ -64,13 +67,75 @@ describe("FileUploadController", () => {
         stream: null as unknown as Readable,
       };
 
-      await expect(controller.uploadFile(mockFile)).rejects.toThrow();
+      await expect(controller.uploadFile(mockFile)).rejects.toThrow(
+        BadRequestException,
+      );
+
+      try {
+        await controller.uploadFile(mockFile);
+      } catch (error) {
+        expect(error).toBeInstanceOf(BadRequestException);
+        if (error instanceof BadRequestException) {
+          const response = error.getResponse() as ErrorResponseDto;
+          expect(response).toHaveProperty("error");
+          expect(response).toHaveProperty("code");
+          // Non-MP3 files return UNSUPPORTED_FORMAT (no parser available)
+          expect(response.code).toBe(FileUploadErrorCode.UNSUPPORTED_FORMAT);
+        }
+      }
     });
 
-    it("should throw BadRequestException when file is missing", async () => {
+    it("should throw BadRequestException with FILE_REQUIRED code when file is missing", async () => {
       await expect(
         controller.uploadFile(null as unknown as Express.Multer.File),
-      ).rejects.toThrow();
+      ).rejects.toThrow(BadRequestException);
+
+      try {
+        await controller.uploadFile(
+          null as unknown as Express.Multer.File,
+        );
+      } catch (error) {
+        expect(error).toBeInstanceOf(BadRequestException);
+        if (error instanceof BadRequestException) {
+          const response = error.getResponse() as ErrorResponseDto;
+          expect(response).toHaveProperty("error");
+          expect(response).toHaveProperty("code");
+          expect(response.code).toBe(FileUploadErrorCode.FILE_REQUIRED);
+        }
+      }
+    });
+
+    it("should throw PayloadTooLargeException with FILE_TOO_LARGE code for files > 1GB", async () => {
+      const largeFileBuffer = Buffer.alloc(1024 * 1024 * 1024 + 1); // 1GB + 1 byte
+      const mockFile: Express.Multer.File = {
+        fieldname: "file",
+        originalname: "large.mp3",
+        encoding: "7bit",
+        mimetype: "audio/mpeg",
+        size: largeFileBuffer.length,
+        buffer: largeFileBuffer,
+        destination: "",
+        filename: "",
+        path: "",
+        stream: null as unknown as Readable,
+      };
+
+      await expect(controller.uploadFile(mockFile)).rejects.toThrow(
+        PayloadTooLargeException,
+      );
+
+      try {
+        await controller.uploadFile(mockFile);
+      } catch (error) {
+        expect(error).toBeInstanceOf(PayloadTooLargeException);
+        if (error instanceof PayloadTooLargeException) {
+          const response = error.getResponse() as ErrorResponseDto;
+          expect(response).toHaveProperty("error");
+          expect(response).toHaveProperty("code");
+          expect(response.code).toBe(FileUploadErrorCode.FILE_TOO_LARGE);
+          expect(response.error).toBe("File too large");
+        }
+      }
     });
   });
 });

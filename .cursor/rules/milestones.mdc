@@ -76,19 +76,19 @@ This document outlines the development milestones for the MP3 file analysis back
 
 ### Tasks
 - [x] Validate file type (check magic bytes/MP3 signature) - Implemented via Mp3TypeDetector
-- [ ] Validate file size limits (reject > 1GB)
-- [ ] Add specific error codes and messages
-- [ ] Implement global exception filter
+- [x] Validate file size limits (reject > 1GB)
+- [x] Add specific error codes and messages
+- [x] Implement global exception filter
 - [x] Add request validation (file required, correct format) - File required check implemented
 - [x] Add file integrity validation - Implemented via parser.validate() method
-- [ ] Add structured error responses
+- [x] Add structured error responses
 
 ### Acceptance Criteria
 - ✅ Non-MP3 files return 400 error (via Mp3TypeDetector and parser validation)
-- [ ] Files > 1GB return 413 with `{"error": "File too large", "code": "FILE_TOO_LARGE"}` - Not yet implemented
+- ✅ Files > 1GB return 413 with `{"error": "File too large", "code": "FILE_TOO_LARGE"}`
 - ✅ Missing file returns 400 error - Implemented
 - ✅ All errors return proper HTTP status codes - Using BadRequestException
-- [ ] Error responses follow consistent format with error codes - Not yet implemented (currently plain error messages)
+- ✅ Error responses follow consistent format with error codes
 
 ---
 

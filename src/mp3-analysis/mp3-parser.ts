@@ -1,6 +1,15 @@
-import { BadRequestException } from "@nestjs/common";
 import { IMp3Parser } from "./mp3-parser.interface";
-import { COMMON_MP3_CONSTANTS } from "./mp3-frame-constants";
+import { COMMON_MP3_CONSTANTS } from "./mp3-frame.consts";
+import {
+  EmptyBufferError,
+  FileTooSmallError,
+  CorruptedFrameHeaderError,
+  TruncatedFrameError,
+  FrameAlignmentError,
+  CorruptedFrameError,
+  NoValidFramesError,
+  Mp3AnalysisError,
+} from "./mp3-analysis.errors";
 
 /**
  * Abstract class for MP3 parsers
@@ -11,18 +20,18 @@ export abstract class Mp3Parser implements IMp3Parser {
    * Validates file integrity and detects corruption
    * Fast, lightweight validation that checks for common corruption patterns
    * @param buffer - The MP3 file buffer
-   * @throws BadRequestException if the file is corrupted or invalid
+   * @throws Mp3AnalysisError if the file is corrupted or invalid
    */
   validate(buffer: Buffer): void {
     // Reject null or empty buffers to prevent processing invalid data
     if (!buffer || buffer.length === 0) {
-      throw new BadRequestException("Invalid MP3 file: empty buffer");
+      throw new EmptyBufferError();
     }
 
     // Ensure file is large enough to contain at least one frame header
     // Prevents index out of bounds errors during frame detection
     if (buffer.length < this.getMinFrameSize()) {
-      throw new BadRequestException(
+      throw new FileTooSmallError(
         `Invalid MP3 file: file too small (${buffer.length} bytes)`,
       );
     }
@@ -44,7 +53,7 @@ export abstract class Mp3Parser implements IMp3Parser {
 
             // Detect truncated frames that would cause parsing errors
             if (frameLength <= 0) {
-              throw new BadRequestException(
+              throw new CorruptedFrameHeaderError(
                 "Invalid MP3 file: corrupted frame header (invalid frame length)",
               );
             }
@@ -52,7 +61,7 @@ export abstract class Mp3Parser implements IMp3Parser {
             // Detect frames that extend beyond file boundaries
             // Indicates file truncation or corruption
             if (position + frameLength > buffer.length) {
-              throw new BadRequestException(
+              throw new TruncatedFrameError(
                 "Invalid MP3 file: truncated frame detected",
               );
             }
@@ -82,7 +91,7 @@ export abstract class Mp3Parser implements IMp3Parser {
               // If no frame found at expected position, file may be corrupted
               // But only throw if we've validated at least one frame (to avoid false positives)
               if (!foundNextFrame && validFrameCount > 0) {
-                throw new BadRequestException(
+                throw new FrameAlignmentError(
                   "Invalid MP3 file: frame alignment error detected",
                 );
               }
@@ -92,12 +101,12 @@ export abstract class Mp3Parser implements IMp3Parser {
             position += frameLength;
             continue;
           } catch (error) {
-            // Re-throw BadRequestException from validation
-            if (error instanceof BadRequestException) {
+            // Re-throw Mp3AnalysisError instances to preserve specific error types
+            if (error instanceof Mp3AnalysisError) {
               throw error;
             }
-            // Other errors indicate corrupted frame data
-            throw new BadRequestException(
+            // All other errors indicate corrupted frame data
+            throw new CorruptedFrameError(
               `Invalid MP3 file: corrupted frame at position ${position}`,
             );
           }
@@ -109,7 +118,7 @@ export abstract class Mp3Parser implements IMp3Parser {
     // Ensure at least one valid frame was found
     // Files with no valid frames are likely corrupted or wrong format
     if (validFrameCount === 0) {
-      throw new BadRequestException(
+      throw new NoValidFramesError(
         `Invalid MP3 file: no valid ${this.getFormatDescription()} frames found`,
       );
     }
@@ -119,11 +128,11 @@ export abstract class Mp3Parser implements IMp3Parser {
    * Counts MP3 frames in a buffer
    * @param buffer - The MP3 file buffer
    * @returns The number of frames found
-   * @throws BadRequestException if the file is not valid for this parser's format
+   * @throws Mp3AnalysisError if the file is not valid for this parser's format
    */
   async countFrames(buffer: Buffer): Promise<number> {
     if (!buffer || buffer.length === 0) {
-      throw new BadRequestException("Invalid MP3 file: empty buffer");
+      throw new EmptyBufferError();
     }
 
     let position = Mp3Parser.skipId3v2Tag(buffer);
@@ -150,7 +159,7 @@ export abstract class Mp3Parser implements IMp3Parser {
     }
 
     if (frameCount === 0) {
-      throw new BadRequestException(
+      throw new NoValidFramesError(
         `Invalid MP3 file: no valid ${this.getFormatDescription()} frames found`,
       );
     }
@@ -283,7 +292,7 @@ export abstract class Mp3Parser implements IMp3Parser {
    * @param buffer - The buffer containing the frame
    * @param position - Position of the frame sync pattern
    * @returns Frame length in bytes
-   * @throws Error if the frame header is invalid
+   * @throws Mp3AnalysisError if the frame header is invalid
    */
   protected abstract parseFrameHeader(
     buffer: Buffer,

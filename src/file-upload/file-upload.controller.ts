@@ -10,7 +10,7 @@ import { Request } from "express";
 import Busboy from "busboy";
 import { UploadResponseDto } from "./dto/upload-response.dto";
 import { Inject } from "@nestjs/common";
-import { Mp3TypeDetector } from "../mp3-analysis/stream-type-detector";
+import { Mp3TypeDetector } from "../mp3-analysis/mp3-type-detector";
 import {
   IParserRegistry,
   PARSER_REGISTRY_TOKEN,
@@ -18,7 +18,7 @@ import {
 import { Mp3AnalysisError } from "../mp3-analysis/errors";
 import { FileStorageError } from "../file-storage/errors";
 import { FileUploadErrorCode } from "./errors";
-import { Mp3FrameIterator } from "../mp3-analysis/stream-frame-iterator";
+import { Mp3FrameIterator } from "../mp3-analysis/mp3-frame-iterator";
 import { FileStorageService } from "../file-storage/file-storage.service";
 import { StreamTee } from "../file-storage/stream-tee";
 

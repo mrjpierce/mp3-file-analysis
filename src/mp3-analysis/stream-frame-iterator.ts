@@ -1,15 +1,13 @@
 import { Readable } from "stream";
-import { FrameInfo } from "./frame-info";
-import { IMp3Parser } from "./mp3-parser.interface";
+import { FrameInfo, IMp3Parser, IFrameIterator } from "./types";
 import { Mp3Parser } from "./mp3-parser";
-import { COMMON_MP3_CONSTANTS } from "./mp3-frame.consts";
-import { IFrameIterator } from "./frame-iterator.interface";
+import { COMMON_MP3_CONSTANTS } from "./consts";
 
 /**
  * Iterator for traversing MP3 frames in a stream
  * Handles stream traversal logic: event handling, chunk management, window buffers
  */
-export class StreamFrameIterator implements IFrameIterator {
+export class Mp3FrameIterator implements IFrameIterator {
   private buffer: Buffer = Buffer.alloc(0);
   private currentPosition: number = 0;
   private id3v2Skipped: boolean = false;
@@ -219,12 +217,5 @@ export class StreamFrameIterator implements IFrameIterator {
     });
   }
 
-  /**
-   * Resets the iterator to the beginning
-   * Note: Streams cannot be reset, so this will throw an error
-   */
-  reset(): void {
-    throw new Error("StreamFrameIterator cannot be reset - stream is consumed");
-  }
 }
 

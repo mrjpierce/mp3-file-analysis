@@ -7,7 +7,7 @@ import {
   ReadError,
   ObjectNotFoundError,
   ObjectEmptyError,
-} from "./file-storage.errors";
+} from "./errors";
 
 /**
  * High-level service for file storage operations.

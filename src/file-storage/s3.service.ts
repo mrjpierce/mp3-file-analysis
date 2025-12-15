@@ -19,7 +19,7 @@ import {
   isAWSNotFoundError,
   isNoSuchLifecycleConfigurationError,
   isNoSuchKeyError,
-} from "./file-storage.errors";
+} from "./errors";
 
 @Injectable()
 export class S3Service implements OnModuleInit {

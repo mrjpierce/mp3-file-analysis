@@ -1,5 +1,4 @@
-import { IMp3Parser } from "../mp3-analysis/mp3-parser.interface";
-import { Mp3TypeInfo } from "../mp3-analysis/mp3-type-detector";
+import { IMp3Parser, Mp3TypeInfo } from "../mp3-analysis/types";
 
 /**
  * Injection token for the parser registry

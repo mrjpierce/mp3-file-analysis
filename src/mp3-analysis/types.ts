@@ -1,4 +1,74 @@
-import { IFrameIterator } from "./frame-iterator.interface";
+/**
+ * MPEG version enum
+ */
+export enum Mp3Version {
+  MPEG1 = "MPEG-1",
+  MPEG2 = "MPEG-2",
+  MPEG25 = "MPEG-2.5",
+  Unknown = "Unknown",
+}
+
+/**
+ * MPEG layer enum
+ */
+export enum Mp3Layer {
+  Layer1 = "Layer 1",
+  Layer2 = "Layer 2",
+  Layer3 = "Layer 3",
+  Unknown = "Unknown",
+}
+
+/**
+ * MP3 file type detection result
+ */
+export interface Mp3TypeInfo {
+  version: Mp3Version;
+  layer: Mp3Layer;
+  description: string;
+}
+
+/**
+ * Information about a detected MP3 frame
+ */
+export interface FrameInfo {
+  /**
+   * Position of the frame sync pattern in the stream/buffer
+   */
+  position: number;
+
+  /**
+   * 4-byte frame header
+   */
+  headerBytes: Buffer;
+
+  /**
+   * Calculated frame length in bytes
+   */
+  length: number;
+
+  /**
+   * Buffer containing the frame (for header frame detection and validation)
+   */
+  buffer: Buffer;
+}
+
+/**
+ * Interface for iterating through MP3 frames
+ * Abstracts frame traversal logic from analysis logic
+ */
+export interface IFrameIterator {
+  /**
+   * Gets the next frame from the iterator
+   * @returns Promise that resolves to FrameInfo if a frame is found, null if no more frames
+   */
+  next(): Promise<FrameInfo | null> | FrameInfo | null;
+
+  /**
+   * Checks if there are more frames to iterate
+   * @returns true if more frames are available
+   */
+  hasNext(): boolean;
+}
 
 /**
  * Generic interface for MP3 parser implementations
@@ -51,3 +121,4 @@ export interface IMp3Parser {
    */
   calculateFrameLength(headerBytes: Buffer): number;
 }
+

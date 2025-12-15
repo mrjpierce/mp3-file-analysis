@@ -1,13 +1,33 @@
 import { Readable } from "stream";
-import { Mp3TypeInfo } from "./mp3-type-detector";
 import { Mp3Parser } from "./mp3-parser";
-import { COMMON_MP3_CONSTANTS } from "./mp3-frame.consts";
+import { COMMON_MP3_CONSTANTS } from "./consts";
+import { Mp3Version, Mp3Layer, Mp3TypeInfo } from "./types";
+
+/**
+ * Map from MPEG version bit value to Mp3Version enum
+ */
+const VERSION_MAP: ReadonlyMap<number, Mp3Version> = new Map([
+  [0x00, Mp3Version.MPEG25],
+  [0x01, Mp3Version.Unknown],
+  [0x02, Mp3Version.MPEG2],
+  [0x03, Mp3Version.MPEG1],
+]);
+
+/**
+ * Map from MPEG layer bit value to Mp3Layer enum
+ */
+const LAYER_MAP: ReadonlyMap<number, Mp3Layer> = new Map([
+  [0x00, Mp3Layer.Unknown],
+  [0x01, Mp3Layer.Layer3],
+  [0x02, Mp3Layer.Layer2],
+  [0x03, Mp3Layer.Layer1],
+]);
 
 /**
  * Detects MP3 type from a stream by reading the first chunk
  * This allows type detection without loading the entire file into memory
  */
-export class StreamTypeDetector {
+export class Mp3TypeDetector {
   /**
    * Reads enough bytes from a stream to detect MP3 type
    * @param stream - The readable stream
@@ -39,8 +59,8 @@ export class StreamTypeDetector {
         cleanup();
         if (totalBytes === 0) {
           resolve({
-            version: "Unknown",
-            layer: "Unknown",
+            version: Mp3Version.Unknown,
+            layer: Mp3Layer.Unknown,
             description: "Invalid file: empty stream",
           });
           return;
@@ -79,8 +99,8 @@ export class StreamTypeDetector {
   private static detectTypeFromBuffer(buffer: Buffer): Mp3TypeInfo {
     if (!buffer || buffer.length < 4) {
       return {
-        version: "Unknown",
-        layer: "Unknown",
+        version: Mp3Version.Unknown,
+        layer: Mp3Layer.Unknown,
         description: "Invalid file: insufficient data",
       };
     }
@@ -111,44 +131,18 @@ export class StreamTypeDetector {
     }
 
     return {
-      version: "Unknown",
-      layer: "Unknown",
+      version: Mp3Version.Unknown,
+      layer: Mp3Layer.Unknown,
       description: "No valid MP3 frame found",
     };
   }
 
-  private static getVersionName(
-    version: number,
-  ): "MPEG-1" | "MPEG-2" | "MPEG-2.5" | "Unknown" {
-    switch (version) {
-      case 0x00:
-        return "MPEG-2.5";
-      case 0x01:
-        return "Unknown";
-      case 0x02:
-        return "MPEG-2";
-      case 0x03:
-        return "MPEG-1";
-      default:
-        return "Unknown";
-    }
+  private static getVersionName(version: number): Mp3Version {
+    return VERSION_MAP.get(version) ?? Mp3Version.Unknown;
   }
 
-  private static getLayerName(
-    layer: number,
-  ): "Layer 1" | "Layer 2" | "Layer 3" | "Unknown" {
-    switch (layer) {
-      case 0x00:
-        return "Unknown";
-      case 0x01:
-        return "Layer 3";
-      case 0x02:
-        return "Layer 2";
-      case 0x03:
-        return "Layer 1";
-      default:
-        return "Unknown";
-    }
+  private static getLayerName(layer: number): Mp3Layer {
+    return LAYER_MAP.get(layer) ?? Mp3Layer.Unknown;
   }
 }
 

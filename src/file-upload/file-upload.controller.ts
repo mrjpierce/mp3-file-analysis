@@ -11,15 +11,15 @@ import { Readable } from "stream";
 import Busboy from "busboy";
 import { UploadResponseDto } from "./dto/upload-response.dto";
 import { Inject } from "@nestjs/common";
-import { StreamTypeDetector } from "../mp3-analysis/stream-type-detector";
+import { Mp3TypeDetector } from "../mp3-analysis/stream-type-detector";
 import {
   IParserRegistry,
   PARSER_REGISTRY_TOKEN,
-} from "./parser-registry.interface";
-import { Mp3AnalysisError } from "../mp3-analysis/mp3-analysis.errors";
-import { FileStorageError } from "../file-storage/file-storage.errors";
-import { FileUploadErrorCode } from "./file-upload.errors";
-import { StreamFrameIterator } from "../mp3-analysis/stream-frame-iterator";
+} from "./types";
+import { Mp3AnalysisError } from "../mp3-analysis/errors";
+import { FileStorageError } from "../file-storage/errors";
+import { FileUploadErrorCode } from "./errors";
+import { Mp3FrameIterator } from "../mp3-analysis/stream-frame-iterator";
 import { FileStorageService } from "../file-storage/file-storage.service";
 
 @Controller("file-upload")
@@ -106,7 +106,7 @@ export class FileUploadController {
             await uploadPromise;
 
           // Detect the MP3 file type from a dedicated stream
-          const typeInfo = await StreamTypeDetector.detectTypeFromStream(
+          const typeInfo = await Mp3TypeDetector.detectTypeFromStream(
             typeDetectionStream,
           );
 
@@ -124,7 +124,7 @@ export class FileUploadController {
           }
 
           // Create iterator for validation
-          const validationIterator = new StreamFrameIterator(
+          const validationIterator = new Mp3FrameIterator(
             validationStream,
             parser,
           );
@@ -133,7 +133,7 @@ export class FileUploadController {
           await parser.validate(validationIterator);
 
           // Create iterator for counting
-          const countingIterator = new StreamFrameIterator(
+          const countingIterator = new Mp3FrameIterator(
             countingStream,
             parser,
           );

@@ -138,7 +138,12 @@ export class Mp3FrameIterator implements IFrameIterator {
                 buffer: this.buffer,
               };
 
+              // Optimization: Jump directly to next expected frame position
+              // This skips byte-by-byte scanning between frames for well-formed MP3s
+              // If the next frame is aligned, it will be found immediately on the next call
+              // If not aligned, the algorithm will fall back to byte-by-byte scanning
               this.currentPosition += frameLength;
+
               return frameInfo;
             } else {
               // Frame extends beyond current buffer, need more data

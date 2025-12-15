@@ -1,5 +1,10 @@
-import { IMp3Parser } from "./mp3-parser.interface";
-import { Mp3TypeInfo } from "./mp3-type-detector";
+import { IMp3Parser } from "../mp3-analysis/mp3-parser.interface";
+import { Mp3TypeInfo } from "../mp3-analysis/mp3-type-detector";
+
+/**
+ * Injection token for the parser registry
+ */
+export const PARSER_REGISTRY_TOKEN = Symbol("IParserRegistry");
 
 /**
  * Interface for parser registry
@@ -25,3 +30,4 @@ export interface IParserRegistry {
     parser: IMp3Parser,
   ): void;
 }
+

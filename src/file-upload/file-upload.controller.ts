@@ -8,12 +8,17 @@ import {
   Logger,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
+import { Readable } from "stream";
 import { UploadResponseDto } from "./dto/upload-response.dto";
 import { Inject } from "@nestjs/common";
 import { Mp3TypeDetector } from "../mp3-analysis/mp3-type-detector";
-import { IParserRegistry } from "../mp3-analysis/parser-registry.interface";
+import {
+  IParserRegistry,
+  PARSER_REGISTRY_TOKEN,
+} from "./parser-registry.interface";
 import { Mp3AnalysisError } from "../mp3-analysis/mp3-analysis.errors";
-import { FileUploadErrorCode } from "./file-upload-errors";
+import { FileUploadErrorCode } from "./file-upload.errors";
+import { StreamFrameIterator } from "../mp3-analysis/stream-frame-iterator";
 
 // Maximum file size: 1GB (1,073,741,824 bytes)
 const MAX_FILE_SIZE = 1024 * 1024 * 1024;
@@ -23,7 +28,7 @@ export class FileUploadController {
   private readonly logger = new Logger(FileUploadController.name);
 
   constructor(
-    @Inject("IParserRegistry")
+    @Inject(PARSER_REGISTRY_TOKEN)
     private readonly parserRegistry: IParserRegistry,
   ) {}
 
@@ -61,11 +66,24 @@ export class FileUploadController {
     }
 
     try {
-      // Validate file integrity and detect corruption
-      parser.validate(file.buffer);
+      // Create stream from buffer for processing
+      const processingStream = Readable.from(file.buffer);
 
-      // Count frames using the appropriate parser
-      const frameCount = await parser.countFrames(file.buffer);
+      // Create iterator for validation
+      const validationIterator = new StreamFrameIterator(processingStream, parser);
+
+      // Validate file integrity and detect corruption using iterator
+      await parser.validate(validationIterator);
+
+      // Create stream for frame counting
+      const countingStream = Readable.from(file.buffer);
+
+      // Create iterator for counting
+      const countingIterator = new StreamFrameIterator(countingStream, parser);
+
+      // Count frames using iterator
+      const frameCount = await parser.countFrames(countingIterator);
+
 
       return { frameCount };
     } catch (error) {

@@ -2,121 +2,122 @@ import { IMp3Parser } from "./mp3-parser.interface";
 import { COMMON_MP3_CONSTANTS } from "./mp3-frame.consts";
 import {
   EmptyBufferError,
-  FileTooSmallError,
+  NoValidFramesError,
   CorruptedFrameHeaderError,
   TruncatedFrameError,
   FrameAlignmentError,
   CorruptedFrameError,
-  NoValidFramesError,
   Mp3AnalysisError,
 } from "./mp3-analysis.errors";
+import { IFrameIterator } from "./frame-iterator.interface";
 
 /**
  * Abstract class for MP3 parsers
  * Provides common functionality shared across all MP3 format types
  */
 export abstract class Mp3Parser implements IMp3Parser {
+  private readonly formatDescription: string;
+
+  constructor(formatDescription: string) {
+    this.formatDescription = formatDescription;
+  }
+
   /**
-   * Validates file integrity and detects corruption
-   * Fast, lightweight validation that checks for common corruption patterns
-   * @param buffer - The MP3 file buffer
+   * Validates file integrity and detects corruption from a frame iterator
+   * Validates first few frames to detect corruption patterns
+   * @param iterator - The frame iterator
    * @throws Mp3AnalysisError if the file is corrupted or invalid
    */
-  validate(buffer: Buffer): void {
-    // Reject null or empty buffers to prevent processing invalid data
-    if (!buffer || buffer.length === 0) {
-      throw new EmptyBufferError();
-    }
-
-    // Ensure file is large enough to contain at least one frame header
-    // Prevents index out of bounds errors during frame detection
-    if (buffer.length < this.getMinFrameSize()) {
-      throw new FileTooSmallError(
-        `Invalid MP3 file: file too small (${buffer.length} bytes)`,
-      );
-    }
-
-    let position = Mp3Parser.skipId3v2Tag(buffer);
+  async validate(iterator: IFrameIterator): Promise<void> {
     let validFrameCount = 0;
-    const maxFramesToCheck = 10; // Limit validation to first few frames for performance
+    let framesChecked = 0;
+    const maxFramesToCheck = 10;
+    let frameFound = false;
 
-    // Check frame alignment and detect corruption in initial frames
-    // Validates file structure without scanning entire file
-    while (
-      position < buffer.length - this.getMinFrameSize() &&
-      validFrameCount < maxFramesToCheck
-    ) {
-      if (this.isFrameSync(buffer, position)) {
-        if (this.isFormatSpecificFrame(buffer, position)) {
-          try {
-            const frameLength = this.parseFrameHeader(buffer, position);
+    while (true) {
+      const frameInfo = await iterator.next();
+      if (frameInfo === null) {
+        // No more frames
+        break;
+      }
 
-            // Detect truncated frames that would cause parsing errors
-            if (frameLength <= 0) {
-              throw new CorruptedFrameHeaderError(
-                "Invalid MP3 file: corrupted frame header (invalid frame length)",
-              );
+      frameFound = true;
+
+      // Limit validation to first few frames for performance
+      if (framesChecked >= maxFramesToCheck) {
+        break;
+      }
+
+      try {
+        // Parse frame header with full validation
+        const frameLength = this.parseFrameHeader(
+          frameInfo.buffer,
+          frameInfo.position,
+        );
+
+        // Detect truncated frames that would cause parsing errors
+        if (frameLength <= 0) {
+          throw new CorruptedFrameHeaderError(
+            "Invalid MP3 file: corrupted frame header (invalid frame length)",
+          );
+        }
+
+        // Detect frames that extend beyond buffer boundaries
+        if (frameInfo.position + frameLength > frameInfo.buffer.length) {
+          throw new TruncatedFrameError(
+            "Invalid MP3 file: truncated frame detected",
+          );
+        }
+
+        // Validate frame alignment by checking next expected frame position
+        const nextPosition = frameInfo.position + frameLength;
+        if (
+          nextPosition < frameInfo.buffer.length &&
+          !this.isHeaderFrame(frameInfo.buffer, frameInfo.position)
+        ) {
+          // Check if next frame starts at expected position (alignment check)
+          const alignmentTolerance = 4;
+          let foundNextFrame = false;
+          for (
+            let offset = 0;
+            offset <= alignmentTolerance &&
+            nextPosition + offset < frameInfo.buffer.length;
+            offset++
+          ) {
+            if (this.isFrameSync(frameInfo.buffer, nextPosition + offset)) {
+              foundNextFrame = true;
+              break;
             }
+          }
 
-            // Detect frames that extend beyond file boundaries
-            // Indicates file truncation or corruption
-            if (position + frameLength > buffer.length) {
-              throw new TruncatedFrameError(
-                "Invalid MP3 file: truncated frame detected",
-              );
-            }
-
-            // Validate frame alignment by checking next expected frame position
-            // Detects gaps or overlapping frames that indicate corruption
-            const nextPosition = position + frameLength;
-            if (
-              nextPosition < buffer.length &&
-              !this.isHeaderFrame(buffer, position)
-            ) {
-              // Check if next frame starts at expected position (alignment check)
-              // Allows small tolerance for padding but flags major misalignment
-              const alignmentTolerance = 4;
-              let foundNextFrame = false;
-              for (
-                let offset = 0;
-                offset <= alignmentTolerance && nextPosition + offset < buffer.length;
-                offset++
-              ) {
-                if (this.isFrameSync(buffer, nextPosition + offset)) {
-                  foundNextFrame = true;
-                  break;
-                }
-              }
-
-              // If no frame found at expected position, file may be corrupted
-              // But only throw if we've validated at least one frame (to avoid false positives)
-              if (!foundNextFrame && validFrameCount > 0) {
-                throw new FrameAlignmentError(
-                  "Invalid MP3 file: frame alignment error detected",
-                );
-              }
-            }
-
-            validFrameCount++;
-            position += frameLength;
-            continue;
-          } catch (error) {
-            // Re-throw Mp3AnalysisError instances to preserve specific error types
-            if (error instanceof Mp3AnalysisError) {
-              throw error;
-            }
-            // All other errors indicate corrupted frame data
-            throw new CorruptedFrameError(
-              `Invalid MP3 file: corrupted frame at position ${position}`,
+          // If no frame found at expected position, file may be corrupted
+          if (!foundNextFrame && validFrameCount > 0) {
+            throw new FrameAlignmentError(
+              "Invalid MP3 file: frame alignment error detected",
             );
           }
         }
+
+        validFrameCount++;
+        framesChecked++;
+      } catch (error) {
+        // Re-throw Mp3AnalysisError instances
+        if (error instanceof Mp3AnalysisError) {
+          throw error;
+        }
+        // All other errors indicate corrupted frame data
+        throw new CorruptedFrameError(
+          `Invalid MP3 file: corrupted frame at position ${frameInfo.position}`,
+        );
       }
-      position++;
     }
 
-    // Ensure at least one valid frame was found
-    // Files with no valid frames are likely corrupted or wrong format
+    // If no frames were found, throw error
+    if (!frameFound) {
+      throw new EmptyBufferError();
+    }
+
+    // Finalize validation - ensure at least one valid frame was found
     if (validFrameCount === 0) {
       throw new NoValidFramesError(
         `Invalid MP3 file: no valid ${this.getFormatDescription()} frames found`,
@@ -124,38 +125,28 @@ export abstract class Mp3Parser implements IMp3Parser {
     }
   }
 
+
   /**
-   * Counts MP3 frames in a buffer
-   * @param buffer - The MP3 file buffer
+   * Counts MP3 frames from a frame iterator
+   * Processes frames from the iterator to avoid loading entire file into memory
+   * @param iterator - The frame iterator
    * @returns The number of frames found
    * @throws Mp3AnalysisError if the file is not valid for this parser's format
    */
-  async countFrames(buffer: Buffer): Promise<number> {
-    if (!buffer || buffer.length === 0) {
-      throw new EmptyBufferError();
-    }
-
-    let position = Mp3Parser.skipId3v2Tag(buffer);
+  async countFrames(iterator: IFrameIterator): Promise<number> {
     let frameCount = 0;
 
-    while (position < buffer.length - this.getMinFrameSize()) {
-      if (this.isFrameSync(buffer, position)) {
-        if (this.isFormatSpecificFrame(buffer, position)) {
-          try {
-            const frameLength = this.parseFrameHeader(buffer, position);
-            if (frameLength > 0 && position + frameLength <= buffer.length) {
-              if (!this.isHeaderFrame(buffer, position)) {
-                frameCount++;
-              }
-              position += frameLength;
-              continue;
-            }
-          } catch {
-            // Invalid frame, continue searching
-          }
-        }
+    while (true) {
+      const frameInfo = await iterator.next();
+      if (frameInfo === null) {
+        // No more frames
+        break;
       }
-      position++;
+
+      // Skip header frames (Xing/LAME/VBRI metadata frames)
+      if (!this.isHeaderFrame(frameInfo.buffer, frameInfo.position)) {
+        frameCount++;
+      }
     }
 
     if (frameCount === 0) {
@@ -174,7 +165,7 @@ export abstract class Mp3Parser implements IMp3Parser {
    * @param position - Position to check
    * @returns true if sync pattern is found
    */
-  protected isFrameSync(buffer: Buffer, position: number): boolean {
+  public isFrameSync(buffer: Buffer, position: number): boolean {
     return (
       buffer[position] === COMMON_MP3_CONSTANTS.SYNC_BYTE &&
       (buffer[position + 1] & COMMON_MP3_CONSTANTS.SYNC_MASK) ===
@@ -183,12 +174,12 @@ export abstract class Mp3Parser implements IMp3Parser {
   }
 
   /**
-   * Skips ID3v2 tags at the beginning of the file
+   * Finds the end position of ID3v2 tags at the beginning of the file
    * Common to all MP3 files regardless of format
    * @param buffer - The MP3 file buffer
    * @returns The position after ID3v2 tags (or 0 if no ID3v2 tag found)
    */
-  public static skipId3v2Tag(buffer: Buffer): number {
+  public static findId3v2TagEnd(buffer: Buffer): number {
     if (buffer.length < COMMON_MP3_CONSTANTS.ID3V2_HEADER_SIZE) {
       return 0;
     }
@@ -227,7 +218,7 @@ export abstract class Mp3Parser implements IMp3Parser {
    * @param position - Position of the frame sync pattern
    * @returns true if this is a header frame that should be skipped
    */
-  protected isHeaderFrame(buffer: Buffer, position: number): boolean {
+  public isHeaderFrame(buffer: Buffer, position: number): boolean {
     if (position + 40 > buffer.length) {
       return false;
     }
@@ -281,10 +272,18 @@ export abstract class Mp3Parser implements IMp3Parser {
    * @param position - Position of the frame sync pattern
    * @returns true if this is a valid frame for this parser's format
    */
-  protected abstract isFormatSpecificFrame(
+  public abstract isFormatSpecificFrame(
     buffer: Buffer,
     position: number,
   ): boolean;
+
+  /**
+   * Abstract method: Calculates frame length from header bytes (lightweight, no validation)
+   * Used by traversal logic to advance position without throwing exceptions
+   * @param headerBytes - 4-byte frame header
+   * @returns Frame length in bytes, or 0 if invalid (no exceptions thrown)
+   */
+  public abstract calculateFrameLength(headerBytes: Buffer): number;
 
   /**
    * Abstract method: Parses MP3 frame header and returns frame length
@@ -294,7 +293,7 @@ export abstract class Mp3Parser implements IMp3Parser {
    * @returns Frame length in bytes
    * @throws Mp3AnalysisError if the frame header is invalid
    */
-  protected abstract parseFrameHeader(
+  public abstract parseFrameHeader(
     buffer: Buffer,
     position: number,
   ): number;
@@ -304,12 +303,14 @@ export abstract class Mp3Parser implements IMp3Parser {
    * Used for bounds checking during frame detection
    * @returns Minimum frame size in bytes
    */
-  protected abstract getMinFrameSize(): number;
+  public abstract getMinFrameSize(): number;
 
   /**
-   * Abstract method: Returns a human-readable description of this format
+   * Returns a human-readable description of this format
    * Used in error messages
    * @returns Format description (e.g., "MPEG-1 Layer 3")
    */
-  protected abstract getFormatDescription(): string;
+  public getFormatDescription(): string {
+    return this.formatDescription;
+  }
 }

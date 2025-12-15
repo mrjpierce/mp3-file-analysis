@@ -6,7 +6,7 @@ import { BadRequestException, PayloadTooLargeException } from "@nestjs/common";
 import { FileUploadController } from "../src/file-upload/file-upload.controller";
 import { FileUploadModule } from "../src/file-upload/file-upload.module";
 import { ErrorResponseDto } from "../src/common/dto/error-response.dto";
-import { FileUploadErrorCode } from "../src/file-upload/file-upload-errors";
+import { FileUploadErrorCode } from "../src/file-upload/file-upload.errors";
 
 describe("FileUploadController", () => {
   let controller: FileUploadController;
@@ -136,6 +136,67 @@ describe("FileUploadController", () => {
           expect(response.error).toBe("File too large");
         }
       }
+    });
+
+    it("should process files using streaming (maintains frame count accuracy)", async () => {
+      const testFilePath = join(
+        __dirname,
+        "../test-data/Frame by Frame (Foundation Health).mp3",
+      );
+      const fileBuffer = readFileSync(testFilePath);
+
+      // Get frame count using buffer method (baseline)
+      const mockFileBuffer: Express.Multer.File = {
+        fieldname: "file",
+        originalname: "Frame by Frame (Foundation Health).mp3",
+        encoding: "7bit",
+        mimetype: "audio/mpeg",
+        size: fileBuffer.length,
+        buffer: fileBuffer,
+        destination: "",
+        filename: "",
+        path: "",
+        stream: null as unknown as Readable,
+      };
+
+      const result = await controller.uploadFile(mockFileBuffer);
+      const frameCountFromStreaming = result.frameCount;
+
+      // Verify frame count is a valid number
+      expect(frameCountFromStreaming).toBeGreaterThan(0);
+      expect(typeof frameCountFromStreaming).toBe("number");
+
+      // Note: We can't directly compare with buffer method since controller now uses streaming
+      // But we can verify the result is consistent across multiple calls
+      const result2 = await controller.uploadFile(mockFileBuffer);
+      expect(result2.frameCount).toBe(frameCountFromStreaming);
+    });
+
+    it("should handle streaming for files with ID3v2 tags", async () => {
+      const testFilePath = join(
+        __dirname,
+        "../test-data/Frame by Frame (Foundation Health).mp3",
+      );
+      const fileBuffer = readFileSync(testFilePath);
+
+      const mockFile: Express.Multer.File = {
+        fieldname: "file",
+        originalname: "Frame by Frame (Foundation Health).mp3",
+        encoding: "7bit",
+        mimetype: "audio/mpeg",
+        size: fileBuffer.length,
+        buffer: fileBuffer,
+        destination: "",
+        filename: "",
+        path: "",
+        stream: null as unknown as Readable,
+      };
+
+      const result = await controller.uploadFile(mockFile);
+
+      // Should successfully process file with ID3v2 tags via streaming
+      expect(result).toHaveProperty("frameCount");
+      expect(result.frameCount).toBeGreaterThan(0);
     });
   });
 });

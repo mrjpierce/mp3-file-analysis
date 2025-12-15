@@ -6,11 +6,7 @@ import {
   MPEG1_LAYER3_BITRATES,
   MPEG1_SAMPLE_RATES,
 } from "./mp3-frame.consts";
-import {
-  CorruptedFrameHeaderError,
-  CorruptedFrameError,
-  Mp3AnalysisError,
-} from "./mp3-analysis.errors";
+import { CorruptedFrameHeaderError } from "./mp3-analysis.errors";
 
 /**
  * Parser for MPEG Version 1 Audio Layer 3 files
@@ -18,6 +14,9 @@ import {
  */
 @Injectable()
 export class Mpeg1Layer3ParserService extends Mp3Parser {
+  constructor() {
+    super("MPEG-1 Layer 3");
+  }
 
   /**
    * Validates that a frame is exactly MPEG Version 1 Audio Layer 3
@@ -26,7 +25,7 @@ export class Mpeg1Layer3ParserService extends Mp3Parser {
    * @param position - Position of the frame sync pattern
    * @returns true if this is a valid MPEG-1 Layer 3 frame
    */
-  protected isFormatSpecificFrame(buffer: Buffer, position: number): boolean {
+  public isFormatSpecificFrame(buffer: Buffer, position: number): boolean {
     if (position + COMMON_MP3_CONSTANTS.FRAME_HEADER_SIZE > buffer.length) {
       return false;
     }
@@ -68,22 +67,17 @@ export class Mpeg1Layer3ParserService extends Mp3Parser {
   }
 
   /**
-   * Parses MP3 frame header and returns frame length
-   * @param buffer - The buffer containing the frame
-   * @param position - Position of the frame sync pattern
-   * @returns Frame length in bytes
-   * @throws Mp3AnalysisError if the frame header is invalid
+   * Calculates frame length from header bytes (lightweight, no validation)
+   * Used by traversal logic to advance position without throwing exceptions
+   * @param headerBytes - 4-byte frame header
+   * @returns Frame length in bytes, or 0 if invalid (no exceptions thrown)
    */
-  protected parseFrameHeader(buffer: Buffer, position: number): number {
-    if (
-      position + COMMON_MP3_CONSTANTS.FRAME_HEADER_SIZE > buffer.length
-    ) {
-      throw new CorruptedFrameHeaderError(
-        "Insufficient data for frame header",
-      );
+  public calculateFrameLength(headerBytes: Buffer): number {
+    if (headerBytes.length < COMMON_MP3_CONSTANTS.FRAME_HEADER_SIZE) {
+      return 0;
     }
 
-    const header = buffer.readUInt32BE(position);
+    const header = headerBytes.readUInt32BE(0);
 
     const bitrateIndex = (header >> 12) & 0x0f;
     const sampleRateIndex = (header >> 10) & 0x03;
@@ -92,8 +86,9 @@ export class Mpeg1Layer3ParserService extends Mp3Parser {
     const bitrate = MPEG1_LAYER3_BITRATES[bitrateIndex];
     const sampleRate = MPEG1_SAMPLE_RATES[sampleRateIndex];
 
+    // Return 0 if invalid (no exceptions)
     if (bitrate === 0 || sampleRate === 0) {
-      throw new CorruptedFrameHeaderError("Invalid bitrate or sample rate");
+      return 0;
     }
 
     const frameLength =
@@ -106,97 +101,39 @@ export class Mpeg1Layer3ParserService extends Mp3Parser {
   }
 
   /**
+   * Parses MP3 frame header and returns frame length
+   * @param buffer - The buffer containing the frame
+   * @param position - Position of the frame sync pattern
+   * @returns Frame length in bytes
+   * @throws Mp3AnalysisError if the frame header is invalid
+   */
+  public parseFrameHeader(buffer: Buffer, position: number): number {
+    if (
+      position + COMMON_MP3_CONSTANTS.FRAME_HEADER_SIZE > buffer.length
+    ) {
+      throw new CorruptedFrameHeaderError(
+        "Insufficient data for frame header",
+      );
+    }
+
+    const headerBytes = buffer.subarray(
+      position,
+      position + COMMON_MP3_CONSTANTS.FRAME_HEADER_SIZE,
+    );
+    const frameLength = this.calculateFrameLength(headerBytes);
+
+    if (frameLength === 0) {
+      throw new CorruptedFrameHeaderError("Invalid bitrate or sample rate");
+    }
+
+    return frameLength;
+  }
+
+  /**
    * Returns the minimum frame size for MPEG-1 Layer 3
    * @returns Minimum frame size in bytes
    */
-  protected getMinFrameSize(): number {
+  public getMinFrameSize(): number {
     return MPEG1_LAYER3_CONSTANTS.MIN_FRAME_SIZE;
-  }
-
-  /**
-   * Returns a human-readable description of this format
-   * @returns Format description
-   */
-  protected getFormatDescription(): string {
-    return "MPEG-1 Layer 3";
-  }
-
-  /**
-   * Validates file integrity and detects corruption
-   * Performs common validation first, then MPEG-1 Layer 3 specific checks
-   * @param buffer - The MP3 file buffer
-   * @throws Mp3AnalysisError if the file is corrupted or invalid
-   */
-  validate(buffer: Buffer): void {
-    // Perform common validation checks first (empty buffer, file size, frame alignment, etc.)
-    super.validate(buffer);
-
-    // Perform MPEG-1 Layer 3 specific validation
-    let position = Mp3Parser.skipId3v2Tag(buffer);
-    const maxFramesToCheck = 5; // Check first few frames for consistency
-
-    // Validate frame header consistency across multiple frames
-    // Detects corruption where frame headers have inconsistent or invalid values
-    let firstBitrate: number | null = null;
-    let firstSampleRate: number | null = null;
-    let checkedFrames = 0;
-
-    while (
-      position < buffer.length - this.getMinFrameSize() &&
-      checkedFrames < maxFramesToCheck
-    ) {
-      if (this.isFrameSync(buffer, position)) {
-        if (this.isFormatSpecificFrame(buffer, position)) {
-          try {
-            const header = buffer.readUInt32BE(position);
-            const bitrateIndex = (header >> 12) & 0x0f;
-            const sampleRateIndex = (header >> 10) & 0x03;
-
-            const bitrate = MPEG1_LAYER3_BITRATES[bitrateIndex];
-            const sampleRate = MPEG1_SAMPLE_RATES[sampleRateIndex];
-
-            // Detect invalid bitrate/sample rate combinations that indicate corruption
-            if (bitrate === 0 || sampleRate === 0) {
-              throw new CorruptedFrameHeaderError(
-                "Invalid MP3 file: corrupted frame header (invalid bitrate or sample rate)",
-              );
-            }
-
-            // Check for consistent encoding parameters across frames
-            // VBR files may vary, but CBR files should be consistent
-            // Flagging only extreme inconsistencies to avoid false positives
-            if (firstBitrate !== null && firstSampleRate !== null) {
-              // Allow some variation for VBR, but flag impossible changes
-              if (
-                bitrate !== firstBitrate &&
-                sampleRate !== firstSampleRate &&
-                checkedFrames < 3
-              ) {
-                // Very early frame changes might indicate corruption
-                // But allow it after a few frames (VBR detection)
-              }
-            } else {
-              firstBitrate = bitrate;
-              firstSampleRate = sampleRate;
-            }
-
-            const frameLength = this.parseFrameHeader(buffer, position);
-            position += frameLength;
-            checkedFrames++;
-            continue;
-          } catch (error) {
-            // Re-throw Mp3AnalysisError instances
-            if (error instanceof Mp3AnalysisError) {
-              throw error;
-            }
-            // All other errors would be due to frame parsing, indicating corruption
-            throw new CorruptedFrameError(
-              `Invalid MPEG-1 Layer 3 file: corrupted frame at position ${position}`,
-            );
-          }
-        }
-      }
-      position++;
-    }
   }
 }

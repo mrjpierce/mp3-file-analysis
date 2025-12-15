@@ -69,13 +69,13 @@ export class FileUploadController {
       const processingStream = Readable.from(file.buffer);
 
       // Validate file integrity and detect corruption using stream
-      await parser.validateStream(processingStream);
+      await parser.validate(processingStream);
 
       // Create stream for frame counting
       const countingStream = Readable.from(file.buffer);
 
       // Count frames using stream-based method
-      const frameCount = await parser.countFramesStream(countingStream);
+      const frameCount = await parser.countFrames(countingStream);
 
 
       return { frameCount };

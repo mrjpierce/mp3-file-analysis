@@ -28,8 +28,8 @@ export class Mp3TypeDetector {
       };
     }
 
-    // Skip ID3v2 tags
-    let position = Mp3Parser.skipId3v2Tag(buffer);
+    // Find position after ID3v2 tags
+    let position = Mp3Parser.findId3v2TagEnd(buffer);
 
     // Search for first frame sync
     while (position < buffer.length - COMMON_MP3_CONSTANTS.FRAME_HEADER_SIZE) {

@@ -117,11 +117,11 @@ This document outlines the development milestones for the MP3 file analysis back
 **Goal**: Set up LocalStack for local S3 development.
 
 ### Tasks
-- [ ] Add docker-compose.yml with LocalStack service
-- [ ] Configure AWS SDK to use LocalStack endpoint
-- [ ] Create S3 service module
-- [ ] Implement S3 bucket creation (via script or CDK)
-- [ ] Test S3 operations with LocalStack
+- [x] Add docker-compose.yml with LocalStack service
+- [x] Configure AWS SDK to use LocalStack endpoint
+- [x] Create S3 service module
+- [x] Implement S3 bucket creation (via script or CDK)
+- [x] Test S3 operations with LocalStack
 
 ### Acceptance Criteria
 - ✅ `docker-compose up -d localstack` starts LocalStack

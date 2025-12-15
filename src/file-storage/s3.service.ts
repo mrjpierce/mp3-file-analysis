@@ -149,33 +149,13 @@ export class S3Service implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Upload a stream to S3
+   * Upload a stream to S3 using multipart upload
    * @param key S3 object key
    * @param stream Readable stream to upload
    * @param contentType Optional content type
    * @returns Promise that resolves when upload is complete
    */
   async uploadStream(
-    key: string,
-    stream: Readable,
-    contentType?: string,
-  ): Promise<void> {
-    try {
-      await this.uploadStreamMultipart(key, stream, contentType);
-    } catch (error) {
-      this.logger.error(`Failed to upload object '${key}' to S3:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Upload a stream to S3 using multipart upload (for streams without known length)
-   * @param key S3 object key
-   * @param stream Readable stream to upload
-   * @param contentType Optional content type
-   * @returns Promise that resolves when upload is complete
-   */
-  private async uploadStreamMultipart(
     key: string,
     stream: Readable,
     contentType?: string,
@@ -348,6 +328,7 @@ export class S3Service implements OnModuleInit, OnModuleDestroy {
           );
         }
       }
+      this.logger.error(`Failed to upload object '${key}' to S3:`, error);
       throw error;
     }
   }
@@ -417,4 +398,3 @@ export class S3Service implements OnModuleInit, OnModuleDestroy {
     return `${prefix}/${timestamp}-${uniqueId}`;
   }
 }
-

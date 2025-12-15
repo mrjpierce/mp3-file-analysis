@@ -32,7 +32,9 @@
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^10.4.8",
     "@nestjs/platform-express": "^10.4.8",
+    "@types/busboy": "^1.5.4",
     "aws-cdk-lib": "^2.232.2",
+    "busboy": "^1.6.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },

@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { FileUploadModule } from "../../file-upload/file-upload.module";
-import { S3Module } from "../../s3/s3.module";
+import { FileStorageModule } from "../../file-storage/file-storage.module";
 
 @Module({
   imports: [
@@ -10,7 +10,7 @@ import { S3Module } from "../../s3/s3.module";
       envFilePath: ".env",
     }),
     FileUploadModule,
-    S3Module,
+    FileStorageModule,
   ],
   controllers: [],
   providers: [],

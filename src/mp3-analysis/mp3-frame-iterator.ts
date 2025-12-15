@@ -119,41 +119,49 @@ export class Mp3FrameIterator implements IFrameIterator {
     const minFrameSize = this.parser.getMinFrameSize();
 
     while (this.currentPosition < this.buffer.length - minFrameSize) {
-      if (this.parser.isFrameSync(this.buffer, this.currentPosition)) {
-        if (this.parser.isFormatSpecificFrame(this.buffer, this.currentPosition)) {
-          const headerBytes = this.buffer.subarray(
-            this.currentPosition,
-            this.currentPosition + COMMON_MP3_CONSTANTS.FRAME_HEADER_SIZE,
-          );
-
-          const frameLength = this.parser.calculateFrameLength(headerBytes);
-
-          if (frameLength > 0) {
-            // Check if we have enough data for the full frame
-            if (this.currentPosition + frameLength <= this.buffer.length) {
-              const frameInfo: FrameInfo = {
-                position: this.currentPosition,
-                headerBytes,
-                length: frameLength,
-                buffer: this.buffer,
-              };
-
-              // Optimization: Jump directly to next expected frame position
-              // This skips byte-by-byte scanning between frames for well-formed MP3s
-              // If the next frame is aligned, it will be found immediately on the next call
-              // If not aligned, the algorithm will fall back to byte-by-byte scanning
-              this.currentPosition += frameLength;
-
-              return frameInfo;
-            } else {
-              // Frame extends beyond current buffer, need more data
-              // Don't advance position, wait for more data
-              return null;
-            }
-          }
-        }
+      if (!this.parser.isFrameSync(this.buffer, this.currentPosition)) {
+        this.currentPosition++;
+        continue;
       }
-      this.currentPosition++;
+
+      if (!this.parser.isFormatSpecificFrame(this.buffer, this.currentPosition)) {
+        this.currentPosition++;
+        continue;
+      }
+
+      const headerBytes = this.buffer.subarray(
+        this.currentPosition,
+        this.currentPosition + COMMON_MP3_CONSTANTS.FRAME_HEADER_SIZE,
+      );
+
+      const frameLength = this.parser.calculateFrameLength(headerBytes);
+
+      if (frameLength <= 0) {
+        this.currentPosition++;
+        continue;
+      }
+
+      // Check if we have enough data for the full frame
+      if (this.currentPosition + frameLength > this.buffer.length) {
+        // Frame extends beyond current buffer, need more data
+        // Don't advance position, wait for more data
+        return null;
+      }
+
+      const frameInfo: FrameInfo = {
+        position: this.currentPosition,
+        headerBytes,
+        length: frameLength,
+        buffer: this.buffer,
+      };
+
+      // Optimization: Jump directly to next expected frame position
+      // This skips byte-by-byte scanning between frames for well-formed MP3s
+      // If the next frame is aligned, it will be found immediately on the next call
+      // If not aligned, the algorithm will fall back to byte-by-byte scanning
+      this.currentPosition += frameLength;
+
+      return frameInfo;
     }
 
     return null;

@@ -1,7 +1,6 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from "@nestjs/common";
 import {
   S3Client,
-  PutObjectCommand,
   GetObjectCommand,
   CreateBucketCommand,
   HeadBucketCommand,
@@ -150,48 +149,19 @@ export class S3Service implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Upload a stream or buffer to S3
+   * Upload a stream to S3
    * @param key S3 object key
-   * @param body Stream or Buffer to upload
+   * @param stream Readable stream to upload
    * @param contentType Optional content type
-   * @param contentLength Optional content length (if not provided, uses multipart upload for streams)
    * @returns Promise that resolves when upload is complete
    */
   async uploadStream(
     key: string,
-    body: Readable | Buffer,
+    stream: Readable,
     contentType?: string,
-    contentLength?: number,
   ): Promise<void> {
     try {
-      // If we have contentLength, use simple PutObject
-      if (contentLength !== undefined || body instanceof Buffer) {
-        const commandOptions: any = {
-          Bucket: this.bucketName,
-          Key: key,
-          Body: body,
-          ContentType: contentType,
-        };
-
-        if (contentLength !== undefined) {
-          commandOptions.ContentLength = contentLength;
-        } else if (body instanceof Buffer) {
-          commandOptions.ContentLength = body.length;
-        }
-
-        const command = new PutObjectCommand(commandOptions);
-        await this.s3Client.send(command);
-        this.logger.debug(`Uploaded object '${key}' to S3`);
-        return;
-      }
-
-      // For streams without contentLength, use multipart upload
-      if (body instanceof Readable) {
-        await this.uploadStreamMultipart(key, body, contentType);
-        return;
-      }
-
-      throw new Error("Invalid body type: expected Readable or Buffer");
+      await this.uploadStreamMultipart(key, stream, contentType);
     } catch (error) {
       this.logger.error(`Failed to upload object '${key}' to S3:`, error);
       throw error;

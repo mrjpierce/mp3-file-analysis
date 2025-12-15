@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Readable } from "stream";
 import { S3Service } from "./s3.service";
+import { StreamTee } from "./stream-tee";
 import {
   FileStorageError,
   UploadError,
@@ -8,6 +9,11 @@ import {
   ObjectNotFoundError,
   ObjectEmptyError,
 } from "./errors";
+
+/**
+ * S3 key prefix for MP3 file uploads
+ */
+export const MP3_UPLOADS_PREFIX = "mp3-uploads";
 
 /**
  * High-level service for file storage operations.
@@ -20,48 +26,39 @@ export class FileStorageService {
   constructor(private readonly s3Service: S3Service) {}
 
   /**
-   * Streams a file to storage and returns streams for processing.
+   * Streams a file to storage and returns a StreamTee for processing.
    * The file is streamed directly from the request to S3, then streamed from S3 for processing.
+   * The StreamTee can be used to get multiple streams for type detection, validation, and counting.
    *
    * @param requestStream The readable stream from the HTTP request
    * @param contentType The content type of the file (e.g., 'audio/mpeg')
-   * @param contentLength The content length from request headers (optional)
-   * @returns An object containing the storage key and streams for type detection, validation and counting
+   * @returns An object containing the storage key and StreamTee for processing
    */
-  async uploadAndGetStreams(
+  async uploadAndGetStream(
     requestStream: Readable,
     contentType?: string,
-    contentLength?: number,
   ): Promise<{
     key: string;
-    typeDetectionStream: Readable;
-    validationStream: Readable;
-    countingStream: Readable;
+    streamTee: StreamTee;
   }> {
     // Generate unique storage key using timestamp and unique ID
-    const key = this.s3Service.generateKey("mp3-uploads");
+    const key = this.s3Service.generateKey(MP3_UPLOADS_PREFIX);
 
     try {
       // Stream request directly to S3
-      await this.s3Service.uploadStream(
-        key,
-        requestStream,
-        contentType,
-        contentLength,
-      );
+      await this.s3Service.uploadStream(key, requestStream, contentType);
       this.logger.debug(`File streamed to storage with key: ${key}`);
 
-      // Get streams from storage for processing
-      // We need separate streams for type detection, validation, and counting
-      const typeDetectionStream = await this.s3Service.getStream(key);
-      const validationStream = await this.s3Service.getStream(key);
-      const countingStream = await this.s3Service.getStream(key);
+      // Get single stream from S3
+      const s3Stream = await this.s3Service.getStream(key);
+
+      // Create StreamTee from S3 stream
+      // The StreamTee will buffer all data and can provide multiple streams
+      const streamTee = new StreamTee(s3Stream);
 
       return {
         key,
-        typeDetectionStream,
-        validationStream,
-        countingStream,
+        streamTee,
       };
     } catch (error: any) {
       // If it's already a FileStorageError, re-throw it

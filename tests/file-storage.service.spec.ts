@@ -1,8 +1,9 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { Readable } from "stream";
-import { FileStorageService } from "../src/file-storage/file-storage.service";
+import { FileStorageService, MP3_UPLOADS_PREFIX } from "../src/file-storage/file-storage.service";
 import { S3Service } from "../src/file-storage/s3.service";
 import { FileStorageModule } from "../src/file-storage/file-storage.module";
+import { StreamTee } from "../src/file-storage/stream-tee";
 import {
   UploadError,
   ReadError,
@@ -39,40 +40,69 @@ describe("FileStorageService", () => {
     jest.clearAllMocks();
   });
 
-  describe("uploadAndGetStreams", () => {
-    it("should upload stream and return multiple streams for processing", async () => {
+  describe("uploadAndGetStream", () => {
+    it("should upload stream and return stream tee", async () => {
       const requestStream = Readable.from(Buffer.from("test data"));
       const contentType = "audio/mpeg";
       const key = "test-key";
-      const stream1 = Readable.from(Buffer.from("test data"));
-      const stream2 = Readable.from(Buffer.from("test data"));
-      const stream3 = Readable.from(Buffer.from("test data"));
+      const s3Stream = Readable.from(Buffer.from("test data"));
 
       (s3Service.generateKey as jest.Mock).mockReturnValue(key);
       (s3Service.uploadStream as jest.Mock).mockResolvedValue(undefined);
-      (s3Service.getStream as jest.Mock)
-        .mockResolvedValueOnce(stream1)
-        .mockResolvedValueOnce(stream2)
-        .mockResolvedValueOnce(stream3);
+      (s3Service.getStream as jest.Mock).mockResolvedValueOnce(s3Stream);
 
-      const result = await service.uploadAndGetStreams(
+      const result = await service.uploadAndGetStream(
         requestStream,
         contentType,
       );
 
       expect(result.key).toBe(key);
-      expect(result.typeDetectionStream).toBe(stream1);
-      expect(result.validationStream).toBe(stream2);
-      expect(result.countingStream).toBe(stream3);
-      expect(s3Service.generateKey).toHaveBeenCalledWith("mp3-uploads");
+      expect(result.streamTee).toBeInstanceOf(StreamTee);
+      expect(s3Service.generateKey).toHaveBeenCalledWith(MP3_UPLOADS_PREFIX);
       expect(s3Service.uploadStream).toHaveBeenCalledWith(
         key,
         requestStream,
         contentType,
-        undefined,
       );
-      expect(s3Service.getStream).toHaveBeenCalledTimes(3);
+      expect(s3Service.getStream).toHaveBeenCalledTimes(1);
       expect(s3Service.getStream).toHaveBeenCalledWith(key);
+
+      // Verify stream tee works - can get multiple streams
+      const branch1 = result.streamTee.getStream();
+      const branch2 = result.streamTee.getStream();
+      expect(branch1).toBeInstanceOf(Readable);
+      expect(branch2).toBeInstanceOf(Readable);
+
+      // Verify both streams can read the same data
+      const chunks1: Buffer[] = [];
+      const chunks2: Buffer[] = [];
+
+      branch1.on("data", (chunk: Buffer) => chunks1.push(chunk));
+      branch2.on("data", (chunk: Buffer) => chunks2.push(chunk));
+
+      await new Promise<void>((resolve) => {
+        let ended1 = false;
+        let ended2 = false;
+        const checkDone = () => {
+          if (ended1 && ended2) {
+            const data1 = Buffer.concat(chunks1).toString();
+            const data2 = Buffer.concat(chunks2).toString();
+            expect(data1).toBe("test data");
+            expect(data2).toBe("test data");
+            resolve();
+          }
+        };
+
+        branch1.on("end", () => {
+          ended1 = true;
+          checkDone();
+        });
+
+        branch2.on("end", () => {
+          ended2 = true;
+          checkDone();
+        });
+      });
     });
 
     it("should handle upload errors and convert to UploadError", async () => {
@@ -85,7 +115,7 @@ describe("FileStorageService", () => {
       );
 
       await expect(
-        service.uploadAndGetStreams(requestStream),
+        service.uploadAndGetStream(requestStream),
       ).rejects.toThrow(UploadError);
     });
 
@@ -100,7 +130,7 @@ describe("FileStorageService", () => {
       );
 
       await expect(
-        service.uploadAndGetStreams(requestStream),
+        service.uploadAndGetStream(requestStream),
       ).rejects.toThrow(ReadError);
     });
 
@@ -115,7 +145,7 @@ describe("FileStorageService", () => {
       (s3Service.getStream as jest.Mock).mockRejectedValue(error);
 
       await expect(
-        service.uploadAndGetStreams(requestStream),
+        service.uploadAndGetStream(requestStream),
       ).rejects.toThrow(ObjectNotFoundError);
     });
 
@@ -130,7 +160,7 @@ describe("FileStorageService", () => {
       );
 
       await expect(
-        service.uploadAndGetStreams(requestStream),
+        service.uploadAndGetStream(requestStream),
       ).rejects.toThrow(ObjectEmptyError);
     });
 
@@ -143,7 +173,7 @@ describe("FileStorageService", () => {
       (s3Service.uploadStream as jest.Mock).mockRejectedValue(originalError);
 
       await expect(
-        service.uploadAndGetStreams(requestStream),
+        service.uploadAndGetStream(requestStream),
       ).rejects.toThrow(originalError);
     });
   });

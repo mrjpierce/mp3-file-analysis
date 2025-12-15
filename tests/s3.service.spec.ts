@@ -4,7 +4,6 @@ import { S3Service } from "../src/file-storage/s3.service";
 import { FileStorageModule } from "../src/file-storage/file-storage.module";
 import {
   S3Client,
-  PutObjectCommand,
   GetObjectCommand,
   CreateBucketCommand,
   HeadBucketCommand,
@@ -120,42 +119,7 @@ describe("S3Service", () => {
   });
 
   describe("uploadStream", () => {
-    it("should upload a Buffer using PutObjectCommand", async () => {
-      const key = "test-key";
-      const buffer = Buffer.from("test data");
-      const contentType = "audio/mpeg";
-
-      mockS3Client.send = jest.fn().mockResolvedValue({});
-
-      await service.uploadStream(key, buffer, contentType);
-
-      expect(mockS3Client.send).toHaveBeenCalledWith(
-        expect.any(PutObjectCommand),
-      );
-      // Verify the command was called (detailed property checks are implementation-specific)
-      const callCount = (mockS3Client.send as jest.Mock).mock.calls.length;
-      expect(callCount).toBeGreaterThan(0);
-    });
-
-    it("should upload a stream with contentLength using PutObjectCommand", async () => {
-      const key = "test-key";
-      const stream = Readable.from(Buffer.from("test data"));
-      const contentType = "audio/mpeg";
-      const contentLength = 9;
-
-      mockS3Client.send = jest.fn().mockResolvedValue({});
-
-      await service.uploadStream(key, stream, contentType, contentLength);
-
-      expect(mockS3Client.send).toHaveBeenCalledWith(
-        expect.any(PutObjectCommand),
-      );
-      // Verify the command was called with content length
-      const callCount = (mockS3Client.send as jest.Mock).mock.calls.length;
-      expect(callCount).toBeGreaterThan(0);
-    });
-
-    it("should upload a stream without contentLength using multipart upload", async () => {
+    it("should upload a stream using multipart upload", async () => {
       const key = "test-key";
       const stream = Readable.from(Buffer.from("test data"));
       const contentType = "audio/mpeg";
@@ -199,13 +163,13 @@ describe("S3Service", () => {
 
     it("should throw error on upload failure", async () => {
       const key = "test-key";
-      const buffer = Buffer.from("test data");
+      const stream = Readable.from(Buffer.from("test data"));
 
       mockS3Client.send = jest
         .fn()
         .mockRejectedValue(new Error("Upload failed"));
 
-      await expect(service.uploadStream(key, buffer)).rejects.toThrow(
+      await expect(service.uploadStream(key, stream)).rejects.toThrow(
         "Upload failed",
       );
     });

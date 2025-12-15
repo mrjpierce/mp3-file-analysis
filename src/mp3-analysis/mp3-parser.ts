@@ -1,5 +1,5 @@
 import { IMp3Parser } from "./mp3-parser.interface";
-import { COMMON_MP3_CONSTANTS } from "./mp3-frame-constants";
+import { COMMON_MP3_CONSTANTS } from "./mp3-frame.consts";
 import {
   EmptyBufferError,
   FileTooSmallError,
@@ -9,7 +9,7 @@ import {
   CorruptedFrameError,
   NoValidFramesError,
   Mp3AnalysisError,
-} from "./mp3-analysis-errors";
+} from "./mp3-analysis.errors";
 
 /**
  * Abstract class for MP3 parsers

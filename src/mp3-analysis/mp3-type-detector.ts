@@ -1,4 +1,4 @@
-import { COMMON_MP3_CONSTANTS } from "./mp3-frame-constants";
+import { COMMON_MP3_CONSTANTS } from "./mp3-frame.consts";
 import { Mp3Parser } from "./mp3-parser";
 
 /**

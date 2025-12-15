@@ -12,8 +12,8 @@ import { UploadResponseDto } from "./dto/upload-response.dto";
 import { Inject } from "@nestjs/common";
 import { Mp3TypeDetector } from "../mp3-analysis/mp3-type-detector";
 import { IParserRegistry } from "../mp3-analysis/parser-registry.interface";
-import { Mp3AnalysisError } from "../mp3-analysis/mp3-analysis-errors";
-import { FileUploadErrorCode } from "./file-upload-error-codes.enum";
+import { Mp3AnalysisError } from "../mp3-analysis/mp3-analysis.errors";
+import { FileUploadErrorCode } from "./file-upload-errors";
 
 // Maximum file size: 1GB (1,073,741,824 bytes)
 const MAX_FILE_SIZE = 1024 * 1024 * 1024;

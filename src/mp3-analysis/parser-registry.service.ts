@@ -2,7 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { IMp3Parser } from "./mp3-parser.interface";
 import { IParserRegistry } from "./parser-registry.interface";
 import { Mp3TypeInfo } from "./mp3-type-detector";
-import { ParserAlreadyRegisteredError } from "./mp3-analysis-errors";
+import { ParserAlreadyRegisteredError } from "./mp3-analysis.errors";
 
 /**
  * Registry service for MP3 parsers

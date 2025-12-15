@@ -5,12 +5,12 @@ import {
   MPEG1_LAYER3_CONSTANTS,
   MPEG1_LAYER3_BITRATES,
   MPEG1_SAMPLE_RATES,
-} from "./mp3-frame-constants";
+} from "./mp3-frame.consts";
 import {
   CorruptedFrameHeaderError,
   CorruptedFrameError,
   Mp3AnalysisError,
-} from "./mp3-analysis-errors";
+} from "./mp3-analysis.errors";
 
 /**
  * Parser for MPEG Version 1 Audio Layer 3 files

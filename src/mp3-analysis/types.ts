@@ -121,4 +121,3 @@ export interface IMp3Parser {
    */
   calculateFrameLength(headerBytes: Buffer): number;
 }
-

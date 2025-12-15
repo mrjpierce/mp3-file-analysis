@@ -174,6 +174,8 @@ This document outlines the development milestones for the MP3 file analysis back
 
 ## Milestone 9: AWS Infrastructure - CDK Stack
 
+**Status**: ⏸️ Not Doing (skipped due to time constraints)
+
 **Goal**: Create CDK stack for ALB + Fargate + S3 infrastructure.
 
 ### Tasks
@@ -196,6 +198,8 @@ This document outlines the development milestones for the MP3 file analysis back
 
 ## Milestone 10: Containerization
 
+**Status**: ⏸️ Not Doing (skipped due to time constraints)
+
 **Goal**: Create Docker container for NestJS application.
 
 ### Tasks
@@ -216,6 +220,8 @@ This document outlines the development milestones for the MP3 file analysis back
 
 ## Milestone 11: ECS Fargate Deployment
 
+**Status**: ⏸️ Not Doing (skipped due to time constraints)
+
 **Goal**: Deploy NestJS application to ECS Fargate.
 
 ### Tasks
@@ -235,7 +241,9 @@ This document outlines the development milestones for the MP3 file analysis back
 
 ---
 
-## Milestone 11: ALB Configuration
+## Milestone 12: ALB Configuration
+
+**Status**: ⏸️ Not Doing (skipped due to time constraints)
 
 **Goal**: Configure Application Load Balancer with proper routing.
 
@@ -257,6 +265,8 @@ This document outlines the development milestones for the MP3 file analysis back
 ---
 
 ## Milestone 13: End-to-End Testing
+
+**Status**: ⏸️ Not Doing (skipped due to time constraints)
 
 **Goal**: Test complete flow from client to AWS infrastructure.
 
@@ -280,6 +290,8 @@ This document outlines the development milestones for the MP3 file analysis back
 
 ## Milestone 14: Auto-Scaling Configuration
 
+**Status**: ⏸️ Not Doing (skipped due to time constraints)
+
 **Goal**: Configure ECS auto-scaling for handling concurrent requests.
 
 ### Tasks
@@ -299,6 +311,8 @@ This document outlines the development milestones for the MP3 file analysis back
 ---
 
 ## Milestone 15: Monitoring & Observability
+
+**Status**: ⏸️ Not Doing (skipped due to time constraints)
 
 **Goal**: Set up comprehensive monitoring and alerting.
 
@@ -323,14 +337,15 @@ This document outlines the development milestones for the MP3 file analysis back
 **Goal**: Optimize performance for large files and concurrent requests.
 
 ### Tasks
+- [x] Fix triple S3 streaming issue - stream file from S3 only once instead of three times (type detection, validation, counting)
 - [ ] Profile MP3 parser performance
 - [ ] Optimize frame detection algorithm
-- [ ] Tune Fargate CPU/memory allocation
-- [ ] Optimize S3 streaming (buffer sizes)
+- [x] Optimize S3 streaming (buffer sizes)
 - [ ] Add connection pooling for S3
 - [ ] Benchmark before/after improvements
 
 ### Acceptance Criteria
+- ✅ File is streamed from S3 only once (not three times) for type detection, validation, and counting
 - ✅ Processing time improved for large files
 - ✅ Memory usage optimized
 - ✅ CPU utilization within target range
@@ -340,6 +355,8 @@ This document outlines the development milestones for the MP3 file analysis back
 ---
 
 ## Milestone 17: Security Hardening
+
+**Status**: ⏸️ Not Doing (skipped due to time constraints)
 
 **Goal**: Implement security best practices.
 

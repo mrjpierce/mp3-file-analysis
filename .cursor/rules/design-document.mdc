@@ -203,40 +203,25 @@ sequenceDiagram
 
 ### NestJS Processing Flow
 
-**Current Implementation** (Milestone 3):
+**Current Implementation** (Milestone 7 - Streaming with S3):
 ```mermaid
 flowchart TD
-    Start[Request Received<br/>NestJS] --> Receive[Receive MP3 File<br/>Buffer]
-    Receive --> DetectType[Detect MP3 Type]
-    DetectType --> GetParser[Get Parser from Registry]
-    GetParser --> Validate[Validate File Integrity]
-    Validate -->|Invalid| Error400[Return 400<br/>Bad Request]
-    Validate -->|Valid| Parse[Parse MP3 Buffer<br/>Find Frame Sync Patterns]
-    Parse --> Count[Count Frames]
-    Count -->|Parse Error| Error400
-    Count -->|Success| Success[Return 200 OK<br/>{frameCount: N}]
-    Count -->|Internal Error| Error500[Return 500<br/>Internal Server Error]
-    
-    style Start fill:#e1f5ff
-    style Success fill:#e1ffe1
-    style Error400 fill:#ffe1e1
-    style Error500 fill:#ffe1e1
-```
-
-**Future Implementation** (Milestone 5+):
-```mermaid
-flowchart TD
-    Start[Request Received<br/>NestJS] --> Receive[Receive MP3 File<br/>Stream]
-    Receive --> Validate{Validate File}
-    Validate -->|Invalid| Error400[Return 400<br/>Bad Request]
-    Validate -->|Valid| CheckSize{Check File Size}
-    CheckSize -->|>50MB| StreamS3[Stream to S3<br/>then from S3]
+    Start[Request Received<br/>NestJS] --> Receive[Receive MP3 File<br/>Stream via Busboy]
+    Receive --> CheckSize{Check File Size}
+    CheckSize -->|>50MB| StreamS3[Stream to S3<br/>via FileStorageService]
     CheckSize -->|<=50MB| ProcessDirect[Process from<br/>request stream]
-    StreamS3 --> Parse
-    ProcessDirect --> Parse[Parse MP3 Stream<br/>Find Frame Sync Patterns]
+    StreamS3 --> GetStreams[Get Streams from S3<br/>Type Detection, Validation, Counting]
+    GetStreams --> DetectType[Detect MP3 Type<br/>via StreamTypeDetector]
+    ProcessDirect --> DetectType
+    DetectType -->|Invalid| Error400[Return 400<br/>Bad Request]
+    DetectType -->|Valid| GetParser[Get Parser from Registry]
+    GetParser --> Validate[Validate File Integrity<br/>via Parser.validate]
+    Validate -->|Invalid| Error400
+    Validate -->|Valid| Parse[Parse MP3 Stream<br/>via StreamFrameIterator]
     Parse --> Count[Count Frames]
     Count -->|Parse Error| Error400
-    Count -->|Success| Success[Return 200 OK<br/>{frameCount: N}]
+    Count -->|Success| Cleanup[Clean up S3 file<br/>if used]
+    Cleanup --> Success[Return 200 OK<br/>{frameCount: N}]
     Count -->|Internal Error| Error500[Return 500<br/>Internal Server Error]
     
     style Start fill:#e1f5ff
@@ -251,44 +236,50 @@ flowchart TD
 
 ```
 src/
-├── main.ts                    # Application entry point
-├── app.module.ts              # Root module
+├── tasks/
+│   └── file-upload/
+│       ├── main.ts                    # Application entry point ✅
+│       └── app.module.ts             # Root module ✅
 ├── file-upload/
-│   ├── file-upload.controller.ts    # POST /file-upload endpoint ✅
-│   ├── file-upload.module.ts        # Module definition ✅
+│   ├── file-upload.controller.ts     # POST /file-upload endpoint ✅
+│   ├── file-upload.module.ts         # Module definition ✅
+│   ├── parser-registry.service.ts    # Parser registry service ✅
+│   ├── types.ts                      # Type definitions ✅
+│   ├── errors.ts                     # Error codes ✅
 │   └── dto/
-│       └── upload-response.dto.ts   # Response DTO ✅
-├── mp3-analysis/              # (Renamed from mp3-parser/)
-│   ├── mp3-parser.ts              # Base abstract parser class ✅
-│   ├── mpeg1-layer3-parser.service.ts  # MPEG-1 Layer 3 parser ✅
-│   ├── mp3-type-detector.ts        # File type detection ✅
-│   ├── parser-registry.service.ts  # Parser registry ✅
-│   ├── mp3-frame-constants.ts      # MP3 constants ✅
-│   └── mp3-analysis.module.ts      # Module definition ✅
-├── s3/
-│   ├── s3.service.ts                # S3 streaming operations
-│   └── s3.module.ts                 # Module definition
+│       └── upload-response.dto.ts    # Response DTO ✅
+├── mp3-analysis/
+│   ├── mp3-parser.ts                 # Base abstract parser class ✅
+│   ├── mpeg1-layer3-parser.service.ts # MPEG-1 Layer 3 parser ✅
+│   ├── stream-type-detector.ts       # Stream-based type detection ✅
+│   ├── stream-frame-iterator.ts      # Stream-based frame iteration ✅
+│   ├── consts.ts                     # MP3 constants ✅
+│   ├── types.ts                      # Type definitions ✅
+│   ├── errors.ts                     # Error classes ✅
+│   └── mp3-analysis.module.ts        # Module definition ✅
+├── file-storage/
+│   ├── file-storage.service.ts       # File storage orchestration ✅
+│   ├── file-storage.module.ts        # Module definition ✅
+│   ├── s3.service.ts                 # S3 streaming operations ✅
+│   ├── s3.module.ts                  # S3 module definition ✅
+│   └── errors.ts                     # Storage error classes ✅
 ├── common/
 │   ├── filters/
-│   │   └── http-exception.filter.ts  # Global exception filter
-│   ├── interceptors/
-│   │   └── logging.interceptor.ts   # Request logging
-│   └── pipes/
-│       └── validation.pipe.ts       # Validation pipe
-└── config/
-    └── configuration.ts              # Environment configuration
+│   │   └── http-exception.filter.ts  # Global exception filter ✅
+│   └── dto/
+│       └── error-response.dto.ts     # Error response DTO ✅
 
 __tests__/
 ├── file-upload.controller.spec.ts
-├── file-upload.service.spec.ts
-├── mp3-parser.service.spec.ts
+├── file-storage.service.spec.ts
+├── s3.service.spec.ts
+├── mpeg1-layer3-parser.service.spec.ts
 └── fixtures/
     ├── sample.mp3
     ├── large-sample.mp3
     └── invalid.mp3
 
-Dockerfile                              # Container image
-docker-compose.yml                     # LocalStack + NestJS setup
+docker-compose.yml                     # LocalStack setup ✅
 ```
 
 ### Core Components
@@ -296,42 +287,68 @@ docker-compose.yml                     # LocalStack + NestJS setup
 #### 1. File Upload Controller (`file-upload.controller.ts`)
 - **Responsibilities**:
   - Handle POST `/file-upload` endpoint
-  - Receive multipart/form-data or binary file upload
-  - Determine if file should be streamed to S3 (based on size)
-  - Invoke service for processing
+  - Receive multipart/form-data file upload using Busboy
+  - Stream file to FileStorageService (handles S3 decision internally)
+  - Coordinate type detection, validation, and frame counting
   - Return JSON response with frame count
-  - Handle errors and format error responses
+  - Handle errors and format error responses using ErrorResponseDto
+  - Clean up S3 files after processing
 
-#### 2. File Upload Service (`file-upload.service.ts`)
+#### 2. File Storage Service (`file-storage.service.ts`)
 - **Responsibilities**:
-  - Orchestrate file processing flow
-  - Decide between direct processing vs S3 streaming
-  - Coordinate between S3 service and MP3 parser
+  - Orchestrate file storage operations
+  - Stream files to S3 for large files (>50MB threshold)
+  - Provide separate streams for type detection, validation, and counting
   - Handle file cleanup (delete from S3 after processing)
-  - Error handling and logging
+  - Error handling and conversion to domain errors
+  - **Note**: Currently streams from S3 three times (optimization needed - see Milestone 16)
 
-#### 3. MP3 Parser Service (`mp3-parser.service.ts` and related)
+#### 3. S3 Service (`s3.service.ts`)
 - **Responsibilities**:
-  - Parse MP3 file format (streaming support - not yet implemented)
-  - Identify MPEG Version 1 Audio Layer 3 frames
-  - Count frames by finding sync patterns (0xFF 0xFB or 0xFF 0xFA)
-  - Handle frame headers and side information
-  - Return frame count
-  - Validate file integrity and detect corruption (validate() method)
-  - Support both file streams and S3 streams (streaming not yet implemented)
-
-#### 4. S3 Service (`s3.service.ts`)
-- **Responsibilities**:
-  - Stream file uploads to S3
+  - Stream file uploads to S3 (multipart upload for large files)
   - Create read streams from S3
   - Delete files from S3 after processing
+  - Handle S3 bucket creation and lifecycle policies
   - Handle S3 errors and retries
+  - Support LocalStack for local development
+
+#### 4. MP3 Analysis Services
+- **Mp3TypeDetector** (`stream-type-detector.ts`):
+  - Stream-based MP3 type detection
+  - Reads first chunk to detect MPEG version and layer
+  - Returns Mp3TypeInfo for parser selection
+  - Works with any Readable stream (HTTP request or S3)
+
+- **Mpeg1Layer3Parser** (`mpeg1-layer3-parser.service.ts`):
+  - Implements Mp3Parser interface
+  - Validates MPEG-1 Layer 3 file integrity
+  - Provides validation logic for file structure
+
+- **Mp3FrameIterator** (`stream-frame-iterator.ts`):
+  - Stream-based frame iteration
+  - Finds frame sync patterns (0xFF 0xFB or 0xFF 0xFA)
+  - Parses frame headers to extract frame length
+  - Counts frames by iterating through stream
+  - Works with any Readable stream (HTTP request or S3)
+
+- **ParserRegistry** (`parser-registry.service.ts`):
+  - Registry pattern for MP3 parsers
+  - Selects appropriate parser based on Mp3TypeInfo
+  - Currently supports MPEG-1 Layer 3
 
 #### 5. Request/Response DTOs
-- TypeScript DTOs for:
-  - Upload response: `{ frameCount: number }` - ✅ Implemented
-  - Error response: `{ error: string, code: string }` - ⚠️ Not yet implemented (using plain BadRequestException messages)
-  - Request validation - ✅ Basic validation implemented (file required, type detection)
+- **UploadResponseDto** (`file-upload/dto/upload-response.dto.ts`):
+  - Success response: `{ frameCount: number }` - ✅ Implemented
+
+- **ErrorResponseDto** (`common/dto/error-response.dto.ts`):
+  - Error response: `{ error: string, code: string }` - ✅ Implemented
+  - Used by HttpExceptionFilter for consistent error formatting
+
+- **Request Validation**:
+  - ✅ Content-Type validation (multipart/form-data required)
+  - ✅ File presence validation
+  - ✅ MP3 type detection via StreamTypeDetector
+  - ✅ File integrity validation via parser.validate()
 
 ### MP3 Frame Counting Algorithm
 
@@ -367,10 +384,12 @@ flowchart LR
 7. Return total frame count
 
 **Streaming Implementation**:
-- Process file in chunks (e.g., 64KB buffers)
-- Don't load entire file into memory
-- Use Node.js streams for efficient memory usage
-- Works with both HTTP request streams and S3 read streams
+- ✅ Process file in chunks using Node.js streams
+- ✅ Don't load entire file into memory
+- ✅ Use Node.js streams for efficient memory usage
+- ✅ Works with both HTTP request streams and S3 read streams
+- ✅ StreamFrameIterator processes frames incrementally
+- ✅ StreamTypeDetector reads only first chunk for type detection
 
 ### Error Handling Strategy
 
@@ -693,39 +712,6 @@ services:
       - localstack
 ```
 
-## Implementation Phases
-
-### Phase 1: MVP (Local Development)
-1. ✅ Set up LocalStack for S3 and CloudWatch
-2. ✅ NestJS application with file upload endpoint
-3. ✅ MP3 frame counting logic
-4. ✅ Basic error handling
-5. ✅ Unit tests for MP3 parser
-6. ✅ Local development workflow
-
-### Phase 2: AWS Infrastructure
-1. ✅ CDK stack for ALB + Fargate + S3
-2. ✅ ECS Fargate service definition
-3. ✅ Container image build and push to ECR
-4. ✅ ALB configuration and target groups
-5. ✅ IAM roles and permissions
-6. ✅ CloudWatch logging setup
-
-### Phase 3: Optimization
-1. Performance tuning (CPU/memory allocation)
-2. Enhanced error handling with specific error codes
-3. Monitoring and alarms
-4. Load testing with sample MP3 files
-5. Integration tests
-6. S3 streaming optimization
-
-### Phase 4: Production Readiness
-1. Security hardening (security groups, IAM)
-2. Documentation
-3. Cost optimization review
-4. Performance benchmarking
-5. Deployment automation (CI/CD)
-6. Health check endpoints
 
 ## Technology Stack
 
@@ -734,7 +720,7 @@ services:
 - **Runtime**: Node.js 20.x
 - **Language**: TypeScript
 - **MP3 Parsing**: Custom implementation (streaming support)
-- **File Upload**: Multer or NestJS file upload handling
+- **File Upload**: Busboy for multipart/form-data streaming
 - **AWS SDK**: @aws-sdk/client-s3 (v3)
 
 ### Infrastructure

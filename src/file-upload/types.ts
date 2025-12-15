@@ -29,4 +29,3 @@ export interface IParserRegistry {
     parser: IMp3Parser,
   ): void;
 }
-

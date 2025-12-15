@@ -94,9 +94,11 @@ export class Mp3TypeDetector {
   }
 
   /**
-   * Detects MP3 type from a buffer (reused from Mp3TypeDetector logic)
+   * Detects MP3 type from a buffer
+   * @param buffer The buffer containing MP3 data (at least first 8KB recommended)
+   * @returns The detected MP3 type info
    */
-  private static detectTypeFromBuffer(buffer: Buffer): Mp3TypeInfo {
+  public static detectTypeFromBuffer(buffer: Buffer): Mp3TypeInfo {
     if (!buffer || buffer.length < 4) {
       return {
         version: Mp3Version.Unknown,
@@ -145,4 +147,3 @@ export class Mp3TypeDetector {
     return LAYER_MAP.get(layer) ?? Mp3Layer.Unknown;
   }
 }
-

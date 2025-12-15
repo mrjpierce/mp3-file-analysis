@@ -7,11 +7,10 @@ import {
   Logger,
 } from "@nestjs/common";
 import { Request } from "express";
-import { Readable } from "stream";
 import Busboy from "busboy";
 import { UploadResponseDto } from "./dto/upload-response.dto";
 import { Inject } from "@nestjs/common";
-import { Mp3TypeDetector } from "../mp3-analysis/stream-type-detector";
+import { Mp3TypeDetector } from "../mp3-analysis/mp3-type-detector";
 import {
   IParserRegistry,
   PARSER_REGISTRY_TOKEN,
@@ -19,8 +18,9 @@ import {
 import { Mp3AnalysisError } from "../mp3-analysis/errors";
 import { FileStorageError } from "../file-storage/errors";
 import { FileUploadErrorCode } from "./errors";
-import { Mp3FrameIterator } from "../mp3-analysis/stream-frame-iterator";
+import { Mp3FrameIterator } from "../mp3-analysis/mp3-frame-iterator";
 import { FileStorageService } from "../file-storage/file-storage.service";
+import { StreamTee } from "../file-storage/stream-tee";
 
 @Controller("file-upload")
 export class FileUploadController {
@@ -49,9 +49,8 @@ export class FileUploadController {
 
       const busboy = Busboy({ headers: req.headers });
       let uploadPromise: Promise<{
-        typeDetectionStream: Readable;
-        validationStream: Readable;
-        countingStream: Readable;
+        key: string;
+        streamTee: StreamTee;
       }> | null = null;
       let fileContentType: string | undefined;
       let fileReceived = false;
@@ -72,10 +71,9 @@ export class FileUploadController {
 
         // Start uploading to S3 immediately while the stream is active
         // Don't wait for the finish event - the stream will be consumed by the upload
-        uploadPromise = this.fileStorageService.uploadAndGetStreams(
+        uploadPromise = this.fileStorageService.uploadAndGetStream(
           stream,
           fileContentType,
-          undefined, // Content length not available for multipart
         );
       });
 
@@ -101,11 +99,11 @@ export class FileUploadController {
         }
 
         try {
-          // Wait for upload to complete and get streams from S3
-          const { typeDetectionStream, validationStream, countingStream } =
-            await uploadPromise;
+          // Wait for upload to complete and get stream tee from S3
+          const { streamTee } = await uploadPromise;
 
-          // Detect the MP3 file type from a dedicated stream
+          // Type detection from stream tee (reads first 8KB and stops)
+          const typeDetectionStream = streamTee.getStream();
           const typeInfo = await Mp3TypeDetector.detectTypeFromStream(
             typeDetectionStream,
           );
@@ -123,7 +121,8 @@ export class FileUploadController {
             return;
           }
 
-          // Create iterator for validation
+          // Get validation stream from tee
+          const validationStream = streamTee.getStream();
           const validationIterator = new Mp3FrameIterator(
             validationStream,
             parser,
@@ -132,7 +131,8 @@ export class FileUploadController {
           // Validate file integrity and detect corruption using iterator
           await parser.validate(validationIterator);
 
-          // Create iterator for counting
+          // Get counting stream from tee
+          const countingStream = streamTee.getStream();
           const countingIterator = new Mp3FrameIterator(
             countingStream,
             parser,

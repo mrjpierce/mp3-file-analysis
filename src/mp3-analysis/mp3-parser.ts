@@ -1,5 +1,5 @@
-import { IMp3Parser } from "./mp3-parser.interface";
-import { COMMON_MP3_CONSTANTS } from "./mp3-frame.consts";
+import { IMp3Parser, IFrameIterator } from "./types";
+import { COMMON_MP3_CONSTANTS } from "./consts";
 import {
   EmptyBufferError,
   NoValidFramesError,
@@ -8,8 +8,7 @@ import {
   FrameAlignmentError,
   CorruptedFrameError,
   Mp3AnalysisError,
-} from "./mp3-analysis.errors";
-import { IFrameIterator } from "./frame-iterator.interface";
+} from "./errors";
 
 /**
  * Abstract class for MP3 parsers

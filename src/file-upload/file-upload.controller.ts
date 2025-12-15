@@ -18,6 +18,7 @@ import {
 } from "./parser-registry.interface";
 import { Mp3AnalysisError } from "../mp3-analysis/mp3-analysis.errors";
 import { FileUploadErrorCode } from "./file-upload.errors";
+import { StreamFrameIterator } from "../mp3-analysis/stream-frame-iterator";
 
 // Maximum file size: 1GB (1,073,741,824 bytes)
 const MAX_FILE_SIZE = 1024 * 1024 * 1024;
@@ -68,14 +69,20 @@ export class FileUploadController {
       // Create stream from buffer for processing
       const processingStream = Readable.from(file.buffer);
 
-      // Validate file integrity and detect corruption using stream
-      await parser.validate(processingStream);
+      // Create iterator for validation
+      const validationIterator = new StreamFrameIterator(processingStream, parser);
+
+      // Validate file integrity and detect corruption using iterator
+      await parser.validate(validationIterator);
 
       // Create stream for frame counting
       const countingStream = Readable.from(file.buffer);
 
-      // Count frames using stream-based method
-      const frameCount = await parser.countFrames(countingStream);
+      // Create iterator for counting
+      const countingIterator = new StreamFrameIterator(countingStream, parser);
+
+      // Count frames using iterator
+      const frameCount = await parser.countFrames(countingIterator);
 
 
       return { frameCount };

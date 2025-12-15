@@ -1,5 +1,6 @@
 import { Readable } from "stream";
 import { FrameInfo } from "./frame-info";
+import { IMp3Parser } from "./mp3-parser.interface";
 import { Mp3Parser } from "./mp3-parser";
 import { COMMON_MP3_CONSTANTS } from "./mp3-frame.consts";
 import { IFrameIterator } from "./frame-iterator.interface";
@@ -20,7 +21,7 @@ export class StreamFrameIterator implements IFrameIterator {
 
   constructor(
     private readonly stream: Readable,
-    private readonly parser: Mp3Parser,
+    private readonly parser: IMp3Parser,
   ) {
     this.setupStreamListeners();
   }

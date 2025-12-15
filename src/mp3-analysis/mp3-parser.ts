@@ -9,8 +9,6 @@ import {
   CorruptedFrameError,
   Mp3AnalysisError,
 } from "./mp3-analysis.errors";
-import { Readable } from "stream";
-import { StreamFrameIterator } from "./stream-frame-iterator";
 import { IFrameIterator } from "./frame-iterator.interface";
 
 /**
@@ -25,24 +23,12 @@ export abstract class Mp3Parser implements IMp3Parser {
   }
 
   /**
-   * Factory method to create a frame iterator
-   * Can be overridden by subclasses to provide different iterator implementations
-   * @param stream - The MP3 file stream
-   * @returns An iterator for traversing frames
-   */
-  protected createIterator(stream: Readable): IFrameIterator {
-    return new StreamFrameIterator(stream, this);
-  }
-
-
-  /**
-   * Validates file integrity and detects corruption from a stream
+   * Validates file integrity and detects corruption from a frame iterator
    * Validates first few frames to detect corruption patterns
-   * @param stream - The MP3 file stream
+   * @param iterator - The frame iterator
    * @throws Mp3AnalysisError if the file is corrupted or invalid
    */
-  async validate(stream: Readable): Promise<void> {
-    const iterator = this.createIterator(stream);
+  async validate(iterator: IFrameIterator): Promise<void> {
     let validFrameCount = 0;
     let framesChecked = 0;
     const maxFramesToCheck = 10;
@@ -141,14 +127,13 @@ export abstract class Mp3Parser implements IMp3Parser {
 
 
   /**
-   * Counts MP3 frames in a stream
-   * Processes the stream in chunks to avoid loading entire file into memory
-   * @param stream - The MP3 file stream
+   * Counts MP3 frames from a frame iterator
+   * Processes frames from the iterator to avoid loading entire file into memory
+   * @param iterator - The frame iterator
    * @returns The number of frames found
    * @throws Mp3AnalysisError if the file is not valid for this parser's format
    */
-  async countFrames(stream: Readable): Promise<number> {
-    const iterator = this.createIterator(stream);
+  async countFrames(iterator: IFrameIterator): Promise<number> {
     let frameCount = 0;
 
     while (true) {

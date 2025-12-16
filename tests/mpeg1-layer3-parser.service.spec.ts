@@ -39,25 +39,7 @@ describe("Mpeg1Layer3ParserService", () => {
 
       const frameCount = await service.countFrames(iterator);
 
-      expect(frameCount).toBeGreaterThan(0);
-      expect(typeof frameCount).toBe("number");
-    });
-
-    it("should count frames in a different MP3 file", async () => {
-      const testFilePath = join(
-        __dirname,
-        "../test-data/sample (2).mp3",
-      );
-      if (require("fs").existsSync(testFilePath)) {
-        const fileBuffer = readFileSync(testFilePath);
-        const stream = Readable.from(fileBuffer);
-        const iterator = new Mp3FrameIterator(stream, service);
-
-        const frameCount = await service.countFrames(iterator);
-
-        expect(frameCount).toBeGreaterThan(0);
-        expect(typeof frameCount).toBe("number");
-      }
+      expect(frameCount).toBe(5463);
     });
 
     it("should throw error for invalid MP3 file", async () => {

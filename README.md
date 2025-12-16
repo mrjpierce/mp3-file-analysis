@@ -33,6 +33,8 @@ I produced a high level [Design Document](./.cursor/rules/design-document.mdc) e
 
 - **If I'm streaming the upload, why place it in S3?** Uploading to S3 allows us to decouple the upload and processing computation. While not necessary now, it allows for event driven async processing in a distributed system that could be implemented later. This is how I would have designed the system if it weren't for the strict API contract requirements.
 
+- **Why the test-data song?** I wasn't sure what the license was on the provided sample. Since I was uploading this project to GitHub I made my own song based on the project just to be safe. Song is released under the Creative Commons (CC) License.
+
 ## Quick Start
 
 ### Prerequisites

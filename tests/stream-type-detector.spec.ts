@@ -1,5 +1,5 @@
 import { Readable } from "stream";
-import { Mp3TypeDetector } from "../src/mp3-analysis/stream-type-detector";
+import { Mp3TypeDetector } from "../src/mp3-analysis/mp3-type-detector";
 import { Mp3Version, Mp3Layer } from "../src/mp3-analysis/types";
 import { COMMON_MP3_CONSTANTS } from "../src/mp3-analysis/consts";
 

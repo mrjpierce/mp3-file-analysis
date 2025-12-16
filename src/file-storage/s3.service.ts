@@ -181,7 +181,7 @@ export class S3Service implements OnModuleInit, OnModuleDestroy {
       let partNumber = 1;
       let buffer = Buffer.alloc(0);
       let isUploading = false;
-      let uploadQueue: Array<() => Promise<void>> = [];
+      const uploadQueue: Array<() => Promise<void>> = [];
 
       const processUploadQueue = async () => {
         if (isUploading || uploadQueue.length === 0) {

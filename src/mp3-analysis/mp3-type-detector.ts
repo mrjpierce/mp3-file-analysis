@@ -86,7 +86,6 @@ export class Mp3TypeDetector {
       stream.on("end", onEnd);
       stream.on("error", onError);
 
-      // Resume stream if paused
       if (stream.isPaused()) {
         stream.resume();
       }

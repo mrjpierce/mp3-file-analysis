@@ -36,32 +36,28 @@ export abstract class Mp3Parser implements IMp3Parser {
     while (true) {
       const frameInfo = await iterator.next();
       if (frameInfo === null) {
-        // No more frames
         break;
       }
 
       frameFound = true;
 
-      // Limit validation to first few frames for performance
+      // OPTIMIZATION: Limit validation to first few frames for performance
       if (framesChecked >= maxFramesToCheck) {
         break;
       }
 
       try {
-        // Parse frame header with full validation
         const frameLength = this.parseFrameHeader(
           frameInfo.buffer,
           frameInfo.position,
         );
 
-        // Detect truncated frames that would cause parsing errors
         if (frameLength <= 0) {
           throw new CorruptedFrameHeaderError(
             "Invalid MP3 file: corrupted frame header (invalid frame length)",
           );
         }
 
-        // Detect frames that extend beyond buffer boundaries
         if (frameInfo.position + frameLength > frameInfo.buffer.length) {
           throw new TruncatedFrameError(
             "Invalid MP3 file: truncated frame detected",
@@ -100,23 +96,19 @@ export abstract class Mp3Parser implements IMp3Parser {
         validFrameCount++;
         framesChecked++;
       } catch (error) {
-        // Re-throw Mp3AnalysisError instances
         if (error instanceof Mp3AnalysisError) {
           throw error;
         }
-        // All other errors indicate corrupted frame data
         throw new CorruptedFrameError(
           `Invalid MP3 file: corrupted frame at position ${frameInfo.position}`,
         );
       }
     }
 
-    // If no frames were found, throw error
     if (!frameFound) {
       throw new EmptyBufferError();
     }
 
-    // Finalize validation - ensure at least one valid frame was found
     if (validFrameCount === 0) {
       throw new NoValidFramesError(
         `Invalid MP3 file: no valid ${this.getFormatDescription()} frames found`,
@@ -138,7 +130,6 @@ export abstract class Mp3Parser implements IMp3Parser {
     while (true) {
       const frameInfo = await iterator.next();
       if (frameInfo === null) {
-        // No more frames
         break;
       }
 

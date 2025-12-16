@@ -29,7 +29,6 @@ export class Mp3FrameIterator implements IFrameIterator {
     this.stream.on("end", this.onEnd.bind(this));
     this.stream.on("error", this.onError.bind(this));
     
-    // Resume stream if it's paused
     if (this.stream.isPaused()) {
       this.stream.resume();
     }

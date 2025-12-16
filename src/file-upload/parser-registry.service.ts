@@ -1,6 +1,5 @@
 import { Injectable } from "@nestjs/common";
 import { IMp3Parser, Mp3TypeInfo } from "../mp3-analysis/types";
-import { IParserRegistry } from "./types";
 import { ParserAlreadyRegisteredError } from "../mp3-analysis/errors";
 
 /**
@@ -8,7 +7,7 @@ import { ParserAlreadyRegisteredError } from "../mp3-analysis/errors";
  * Maps file types to parser implementations
  */
 @Injectable()
-export class ParserRegistryService implements IParserRegistry {
+export class ParserRegistryService {
   private readonly parsers = new Map<string, IMp3Parser>();
 
   /**

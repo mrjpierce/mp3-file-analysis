@@ -30,7 +30,7 @@ export class FileUploadService {
    */
   async processUpload(req: Request): Promise<{ key: string }> {
     return new Promise((resolve, reject) => {
-      // Validate content type
+      // Only support multipart/form-data uploads
       const contentType = req.headers["content-type"] || "";
       if (!contentType.includes("multipart/form-data")) {
         reject(
@@ -69,7 +69,6 @@ export class FileUploadService {
 
       busboy.on("error", this.handleBusboyError.bind(this, reject));
 
-      // Pipe the request to busboy for parsing
       req.pipe(busboy);
     });
   }
@@ -136,7 +135,6 @@ export class FileUploadService {
       const key = await uploadPromise;
       state.resolve({ key });
     } catch (error) {
-      // Re-throw FileStorageError as-is (let controller handle conversion)
       if (error instanceof FileStorageError) {
         this.logger.error(
           `File storage error: ${error.message}`,

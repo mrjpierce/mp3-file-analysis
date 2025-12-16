@@ -140,8 +140,9 @@ describe("FileStorageService", () => {
 
       (s3Service.generateKey as jest.Mock).mockReturnValue(key);
       (s3Service.uploadStream as jest.Mock).mockResolvedValue(undefined);
-      const error = new Error("not found");
-      (error as any).name = "NoSuchKey";
+      const error = Object.assign(new Error("not found"), {
+        name: "NoSuchKey",
+      });
       (s3Service.getStream as jest.Mock).mockRejectedValue(error);
 
       await expect(

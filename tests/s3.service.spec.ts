@@ -13,8 +13,14 @@ import {
   CompleteMultipartUploadCommand,
 } from "@aws-sdk/client-s3";
 
-// Mock AWS SDK
 jest.mock("@aws-sdk/client-s3");
+
+type MockS3Client = Pick<S3Client, "send" | "destroy"> & {
+  send: jest.MockedFunction<S3Client["send"]>;
+  destroy: jest.MockedFunction<() => void>;
+};
+
+type S3ServiceWithClient = Record<"s3Client", S3Client>;
 
 describe("S3Service", () => {
   let service: S3Service;
@@ -52,10 +58,11 @@ describe("S3Service", () => {
   beforeAll(async () => {
     // Create a mock S3Client before creating the module
     const mockSend = jest.fn();
-    mockS3Client = {
+    const mockClient: MockS3Client = {
       send: mockSend,
       destroy: jest.fn(),
-    } as any;
+    };
+    mockS3Client = mockClient as jest.Mocked<S3Client>;
 
     // Mock S3Client to return our mock
     (S3Client as jest.Mock).mockImplementation(() => mockS3Client);
@@ -66,7 +73,8 @@ describe("S3Service", () => {
 
     service = module.get<S3Service>(S3Service);
     // Update reference after service is created
-    mockS3Client = (service as any).s3Client;
+    // Using double assertion through unknown to access private property for testing
+    mockS3Client = (service as unknown as S3ServiceWithClient).s3Client as jest.Mocked<S3Client>;
   });
 
   afterAll(async () => {
@@ -78,8 +86,9 @@ describe("S3Service", () => {
       // Mock HeadBucketCommand to throw NotFound error
       mockS3Client.send = jest.fn().mockImplementation((command) => {
         if (command instanceof HeadBucketCommand) {
-          const error = new Error("NotFound");
-          (error as any).name = "NotFound";
+          const error = Object.assign(new Error("NotFound"), {
+            name: "NotFound",
+          } as { name: string });
           throw error;
         }
         if (command instanceof CreateBucketCommand) {
@@ -198,8 +207,9 @@ describe("S3Service", () => {
     it("should throw error when object not found", async () => {
       const key = "test-key";
 
-      const error = new Error("Object not found");
-      (error as any).name = "NoSuchKey";
+      const error = Object.assign(new Error("Object not found"), {
+        name: "NoSuchKey",
+      } as { name: string });
       mockS3Client.send = jest.fn().mockRejectedValue(error);
 
       await expect(service.getStream(key)).rejects.toThrow(
@@ -237,8 +247,9 @@ describe("S3Service", () => {
     it("should return false when object does not exist", async () => {
       const key = "test-key";
 
-      const error = new Error("NotFound");
-      (error as any).name = "NotFound";
+      const error = Object.assign(new Error("NotFound"), {
+        name: "NotFound",
+      } as { name: string });
       mockS3Client.send = jest.fn().mockRejectedValue(error);
 
       const exists = await service.objectExists(key);

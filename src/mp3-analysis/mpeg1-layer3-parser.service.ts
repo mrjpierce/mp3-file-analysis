@@ -86,7 +86,6 @@ export class Mpeg1Layer3ParserService extends Mp3Parser {
     const bitrate = MPEG1_LAYER3_BITRATES[bitrateIndex];
     const sampleRate = MPEG1_SAMPLE_RATES[sampleRateIndex];
 
-    // Return 0 if invalid (no exceptions)
     if (bitrate === 0 || sampleRate === 0) {
       return 0;
     }

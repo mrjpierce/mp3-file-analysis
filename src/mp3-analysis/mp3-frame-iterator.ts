@@ -14,7 +14,7 @@ export class Mp3FrameIterator implements IFrameIterator {
   private isEnded: boolean = false;
   private windowSize: number = 4; // For sync detection across chunks
   private pendingResolve: ((value: FrameInfo | null) => void) | null = null;
-  private pendingReject: ((reason?: any) => void) | null = null;
+  private pendingReject: ((reason?: unknown) => void) | null = null;
   private streamError: Error | null = null;
 
   constructor(
@@ -29,7 +29,6 @@ export class Mp3FrameIterator implements IFrameIterator {
     this.stream.on("end", this.onEnd.bind(this));
     this.stream.on("error", this.onError.bind(this));
     
-    // Resume stream if it's paused
     if (this.stream.isPaused()) {
       this.stream.resume();
     }

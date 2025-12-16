@@ -4,196 +4,72 @@ import {
   Req,
   BadRequestException,
   InternalServerErrorException,
-  Logger,
 } from "@nestjs/common";
 import { Request } from "express";
-import Busboy from "busboy";
 import { UploadResponseDto } from "./dto/upload-response.dto";
-import { Inject } from "@nestjs/common";
-import { Mp3TypeDetector } from "../mp3-analysis/mp3-type-detector";
+import { FileUploadService } from "./file-upload.service";
+import { Mp3ProcessingService } from "./mp3-processing.service";
 import {
-  IParserRegistry,
-  PARSER_REGISTRY_TOKEN,
-} from "./types";
+  UnsupportedFormatError,
+  UploadValidationError,
+} from "./errors";
 import { Mp3AnalysisError } from "../mp3-analysis/errors";
 import { FileStorageError } from "../file-storage/errors";
 import { FileUploadErrorCode } from "./errors";
-import { Mp3FrameIterator } from "../mp3-analysis/mp3-frame-iterator";
-import { FileStorageService } from "../file-storage/file-storage.service";
-import { StreamTee } from "../file-storage/stream-tee";
 
 @Controller("file-upload")
 export class FileUploadController {
-  private readonly logger = new Logger(FileUploadController.name);
-
   constructor(
-    @Inject(PARSER_REGISTRY_TOKEN)
-    private readonly parserRegistry: IParserRegistry,
-    private readonly fileStorageService: FileStorageService,
+    private readonly fileUploadService: FileUploadService,
+    private readonly mp3ProcessingService: Mp3ProcessingService,
   ) {}
 
   @Post()
   async uploadFile(@Req() req: Request): Promise<UploadResponseDto> {
-    return new Promise((resolve, reject) => {
-      // Check if it's multipart/form-data
-      const contentType = req.headers["content-type"] || "";
-      if (!contentType.includes("multipart/form-data")) {
-        reject(
-          new BadRequestException({
-            error: "Invalid content type. Expected multipart/form-data",
-            code: FileUploadErrorCode.FILE_REQUIRED,
-          }),
-        );
-        return;
+    try {
+      // Upload file to S3 and get the key
+      const { key } = await this.fileUploadService.processUpload(req);
+
+      // Process the MP3 file
+      const result = await this.mp3ProcessingService.processFile(key);
+
+      // Convert domain result to DTO
+      return { frameCount: result.frameCount } as UploadResponseDto;
+    } catch (error) {
+      // Convert domain errors to HTTP exceptions
+      if (error instanceof UnsupportedFormatError) {
+        throw new BadRequestException({
+          error: error.message,
+          code: FileUploadErrorCode.UNSUPPORTED_FORMAT,
+        });
       }
 
-      const busboy = Busboy({ headers: req.headers });
-      let uploadPromise: Promise<{
-        key: string;
-        streamTee: StreamTee;
-      }> | null = null;
-      let fileContentType: string | undefined;
-      let fileReceived = false;
+      if (error instanceof UploadValidationError) {
+        throw new BadRequestException({
+          error: error.message,
+          code: FileUploadErrorCode.FILE_REQUIRED,
+        });
+      }
 
-      busboy.on("file", (name, stream, info) => {
-        const { filename, encoding, mimeType } = info;
-        if (name !== "file") {
-          stream.resume(); // Drain non-file fields
-          return;
-        }
+      if (error instanceof Mp3AnalysisError) {
+        throw new BadRequestException({
+          error: error.message,
+          code: FileUploadErrorCode.INVALID_FORMAT,
+        });
+      }
 
-        fileReceived = true;
-        fileContentType = mimeType;
+      if (error instanceof FileStorageError) {
+        throw new InternalServerErrorException({
+          error: error.message,
+          code:
+            error.code === "UPLOAD_ERROR"
+              ? FileUploadErrorCode.STORAGE_UPLOAD_ERROR
+              : FileUploadErrorCode.STORAGE_READ_ERROR,
+        });
+      }
 
-        this.logger.debug(
-          `Received file upload: ${filename}, type: ${mimeType}, encoding: ${encoding}`,
-        );
-
-        // Start uploading to S3 immediately while the stream is active
-        // Don't wait for the finish event - the stream will be consumed by the upload
-        uploadPromise = this.fileStorageService.uploadAndGetStream(
-          stream,
-          fileContentType,
-        );
-      });
-
-      busboy.on("finish", async () => {
-        if (!fileReceived) {
-          reject(
-            new BadRequestException({
-              error: "File is required",
-              code: FileUploadErrorCode.FILE_REQUIRED,
-            }),
-          );
-          return;
-        }
-
-        if (!uploadPromise) {
-          reject(
-            new BadRequestException({
-              error: "File stream was not received",
-              code: FileUploadErrorCode.FILE_REQUIRED,
-            }),
-          );
-          return;
-        }
-
-        try {
-          // Wait for upload to complete and get stream tee from S3
-          const { streamTee } = await uploadPromise;
-
-          // Type detection from stream tee (reads first 8KB and stops)
-          const typeDetectionStream = streamTee.getStream();
-          const typeInfo = await Mp3TypeDetector.detectTypeFromStream(
-            typeDetectionStream,
-          );
-
-          // Get the appropriate parser for this file type
-          const parser = this.parserRegistry.getParser(typeInfo);
-
-          if (!parser) {
-            reject(
-              new BadRequestException({
-                error: `Unsupported MP3 file type: ${typeInfo.description}. No parser available for this format.`,
-                code: FileUploadErrorCode.UNSUPPORTED_FORMAT,
-              }),
-            );
-            return;
-          }
-
-          // Get validation stream from tee
-          const validationStream = streamTee.getStream();
-          const validationIterator = new Mp3FrameIterator(
-            validationStream,
-            parser,
-          );
-
-          // Validate file integrity and detect corruption using iterator
-          await parser.validate(validationIterator);
-
-          // Get counting stream from tee
-          const countingStream = streamTee.getStream();
-          const countingIterator = new Mp3FrameIterator(
-            countingStream,
-            parser,
-          );
-
-          // Count frames using iterator
-          const frameCount = await parser.countFrames(countingIterator);
-
-          resolve({ frameCount });
-        } catch (error) {
-          // Convert mp3-analysis module errors to NestJS exceptions
-          if (error instanceof Mp3AnalysisError) {
-            this.logger.error(
-              `MP3 analysis error: ${error.message}`,
-              error.stack,
-              FileUploadController.name,
-            );
-            reject(
-              new BadRequestException({
-                error: error.message,
-                code: FileUploadErrorCode.INVALID_FORMAT,
-              }),
-            );
-            return;
-          }
-
-          // Convert file storage errors to NestJS exceptions
-          if (error instanceof FileStorageError) {
-            this.logger.error(
-              `File storage error: ${error.message}`,
-              error.stack,
-              FileUploadController.name,
-            );
-            reject(
-              new InternalServerErrorException({
-                error: error.message,
-                code:
-                  error.code === "UPLOAD_ERROR"
-                    ? FileUploadErrorCode.STORAGE_UPLOAD_ERROR
-                    : FileUploadErrorCode.STORAGE_READ_ERROR,
-              }),
-            );
-            return;
-          }
-
-          reject(error);
-        }
-      });
-
-      busboy.on("error", (error: Error) => {
-        this.logger.error(`Busboy error: ${error.message}`, error.stack);
-        reject(
-          new BadRequestException({
-            error: `Failed to parse multipart form data: ${error.message}`,
-            code: FileUploadErrorCode.FILE_REQUIRED,
-          }),
-        );
-      });
-
-      // Pipe the request to busboy for parsing
-      req.pipe(busboy);
-    });
+      // Re-throw unknown errors (will be handled by exception filter)
+      throw error;
+    }
   }
 }

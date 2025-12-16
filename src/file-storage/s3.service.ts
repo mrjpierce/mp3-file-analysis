@@ -50,7 +50,6 @@ export class S3Service implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy() {
-    // Destroy S3Client to close HTTP connections
     this.s3Client.destroy();
   }
 
@@ -165,7 +164,6 @@ export class S3Service implements OnModuleInit, OnModuleDestroy {
     const parts: Array<{ ETag: string; PartNumber: number }> = [];
 
     try {
-      // Initialize multipart upload
       const createCommand = new CreateMultipartUploadCommand({
         Bucket: this.bucketName,
         Key: key,
@@ -183,7 +181,7 @@ export class S3Service implements OnModuleInit, OnModuleDestroy {
       let partNumber = 1;
       let buffer = Buffer.alloc(0);
       let isUploading = false;
-      let uploadQueue: Array<() => Promise<void>> = [];
+      const uploadQueue: Array<() => Promise<void>> = [];
 
       const processUploadQueue = async () => {
         if (isUploading || uploadQueue.length === 0) {
@@ -239,7 +237,7 @@ export class S3Service implements OnModuleInit, OnModuleDestroy {
               }
             });
 
-            // Process queue (non-blocking)
+            // (non-blocking)
             processUploadQueue().catch((error) => {
               stream.destroy();
               reject(error);
@@ -271,7 +269,6 @@ export class S3Service implements OnModuleInit, OnModuleDestroy {
               }
             }
 
-            // Complete multipart upload
             const completeCommand = new CompleteMultipartUploadCommand({
               Bucket: this.bucketName,
               Key: key,
@@ -290,7 +287,6 @@ export class S3Service implements OnModuleInit, OnModuleDestroy {
         });
 
         stream.on("error", async (error) => {
-          // Abort multipart upload on stream error
           if (uploadId) {
             try {
               await this.s3Client.send(
@@ -311,7 +307,6 @@ export class S3Service implements OnModuleInit, OnModuleDestroy {
         });
       });
     } catch (error) {
-      // Abort multipart upload on error
       if (uploadId) {
         try {
           await this.s3Client.send(

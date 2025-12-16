@@ -1,5 +1,5 @@
 import { Readable } from "stream";
-import { Mp3FrameIterator } from "../src/mp3-analysis/stream-frame-iterator";
+import { Mp3FrameIterator } from "../src/mp3-analysis/mp3-frame-iterator";
 import { Mpeg1Layer3ParserService } from "../src/mp3-analysis/mpeg1-layer3-parser.service";
 
 describe("Mp3FrameIterator", () => {

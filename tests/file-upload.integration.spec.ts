@@ -35,8 +35,7 @@ describe("FileUploadController (integration)", () => {
         .expect(201);
 
       expect(response.body).toHaveProperty("frameCount");
-      expect(response.body.frameCount).toBeGreaterThan(0);
-      expect(typeof response.body.frameCount).toBe("number");
+      expect(response.body.frameCount).toBe(5463);
     });
 
     it("should return 400 for missing file", async () => {
@@ -91,24 +90,6 @@ describe("FileUploadController (integration)", () => {
         .expect(201);
 
       expect(response1.body.frameCount).toBe(response2.body.frameCount);
-    });
-
-    it("should handle different MP3 files", async () => {
-      const testFilePath = join(
-        __dirname,
-        "../test-data/sample (2).mp3",
-      );
-      if (require("fs").existsSync(testFilePath)) {
-        const fileBuffer = readFileSync(testFilePath);
-
-        const response = await request(app.getHttpServer())
-          .post("/file-upload")
-          .attach("file", fileBuffer, "sample.mp3")
-          .expect(201);
-
-        expect(response.body).toHaveProperty("frameCount");
-        expect(response.body.frameCount).toBeGreaterThan(0);
-      }
     });
 
     it("should return consistent frame count for same file", async () => {

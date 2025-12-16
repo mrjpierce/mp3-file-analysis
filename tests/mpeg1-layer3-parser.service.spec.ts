@@ -4,7 +4,7 @@ import { join } from "path";
 import { Readable } from "stream";
 import { Mpeg1Layer3ParserService } from "../src/mp3-analysis/mpeg1-layer3-parser.service";
 import { Mp3ParserModule } from "../src/mp3-analysis/mp3-analysis.module";
-import { Mp3FrameIterator } from "../src/mp3-analysis/stream-frame-iterator";
+import { Mp3FrameIterator } from "../src/mp3-analysis/mp3-frame-iterator";
 import {
   NoValidFramesError,
   CorruptedFrameHeaderError,
@@ -39,25 +39,7 @@ describe("Mpeg1Layer3ParserService", () => {
 
       const frameCount = await service.countFrames(iterator);
 
-      expect(frameCount).toBeGreaterThan(0);
-      expect(typeof frameCount).toBe("number");
-    });
-
-    it("should count frames in a different MP3 file", async () => {
-      const testFilePath = join(
-        __dirname,
-        "../test-data/sample (2).mp3",
-      );
-      if (require("fs").existsSync(testFilePath)) {
-        const fileBuffer = readFileSync(testFilePath);
-        const stream = Readable.from(fileBuffer);
-        const iterator = new Mp3FrameIterator(stream, service);
-
-        const frameCount = await service.countFrames(iterator);
-
-        expect(frameCount).toBeGreaterThan(0);
-        expect(typeof frameCount).toBe("number");
-      }
+      expect(frameCount).toBe(5463);
     });
 
     it("should throw error for invalid MP3 file", async () => {

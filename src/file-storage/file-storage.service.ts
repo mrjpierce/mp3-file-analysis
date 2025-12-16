@@ -45,19 +45,14 @@ export class FileStorageService {
     key: string;
     streamTee: StreamTee;
   }> {
-    // Generate unique storage key using timestamp and unique ID
     const key = this.s3Service.generateKey(MP3_UPLOADS_PREFIX);
 
     try {
-      // Stream request directly to S3
       await this.s3Service.uploadStream(key, requestStream, contentType);
       this.logger.debug(`File streamed to storage with key: ${key}`);
 
-      // Get single stream from S3
       const s3Stream = await this.s3Service.getStream(key);
 
-      // Create StreamTee from S3 stream
-      // The StreamTee will buffer all data and can provide multiple streams
       const streamTee = new StreamTee(s3Stream);
 
       return {
@@ -78,7 +73,6 @@ export class FileStorageService {
         );
       }
 
-      // Check for empty object errors (from getStream when response.Body is null)
       if (isObjectEmptyError(error)) {
         throw new ObjectEmptyError(
           `Storage object is empty: ${error.message}`,
@@ -86,7 +80,6 @@ export class FileStorageService {
         );
       }
 
-      // Check if it's a read error (from getStream)
       if (isReadError(error)) {
         throw new ReadError(
           `Failed to read from storage: ${error.message}`,

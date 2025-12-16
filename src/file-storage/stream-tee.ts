@@ -5,8 +5,7 @@ import { Readable, PassThrough } from "stream";
  * that can be consumed independently. All data from the source stream is buffered
  * and distributed to all branches.
  *
- * This is useful when you need to read the same stream multiple times, such as
- * for validation and counting operations that must remain separate.
+ * Based off of the .tee() method from JavaScript's ReadableStream API.
  */
 export class StreamTee {
   private chunks: Buffer[] = [];

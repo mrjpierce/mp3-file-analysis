@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { FileUploadController } from "./file-upload.controller";
 import { FileUploadService } from "./file-upload.service";
 import { Mp3ProcessingService } from "./mp3-processing.service";
+import { BusboyFactory } from "./busboy-factory.service";
 import { Mp3ParserModule } from "../mp3-analysis/mp3-analysis.module";
 import { FileStorageModule } from "../file-storage/file-storage.module";
 import { ParserRegistryService } from "./parser-registry.service";
@@ -14,6 +15,7 @@ import { Mp3Version, Mp3Layer } from "../mp3-analysis/types";
   providers: [
     FileUploadService,
     Mp3ProcessingService,
+    BusboyFactory,
     {
       provide: ParserRegistryService,
       useFactory: (mpeg1Layer3Parser: Mpeg1Layer3ParserService) => {

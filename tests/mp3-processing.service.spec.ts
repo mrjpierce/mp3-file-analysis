@@ -33,16 +33,16 @@ describe("Mp3ProcessingService", () => {
 
     // Create mock parser registry
     parserRegistry = {
-      getParser: jest.fn().mockReturnValue(mockParser),
-      registerParser: jest.fn(),
-    } as any;
+      getParser: jest.fn<IMp3Parser | null, [Mp3TypeInfo]>().mockReturnValue(mockParser),
+      registerParser: jest.fn<void, [Mp3Version, Mp3Layer, IMp3Parser]>(),
+    } as unknown as jest.Mocked<ParserRegistryService>;
 
     // Create mock file storage service
     const mockStream = Readable.from(Buffer.from("test mp3 data"));
     const mockStreamTee = new StreamTee(mockStream);
     fileStorageService = {
-      getStreamTee: jest.fn().mockResolvedValue(mockStreamTee),
-    } as any;
+      getStreamTee: jest.fn<Promise<StreamTee>, [string]>().mockResolvedValue(mockStreamTee),
+    } as unknown as jest.Mocked<FileStorageService>;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [

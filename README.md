@@ -70,6 +70,13 @@ Run the test suite:
 npm test
 ```
 
+### Lint
+
+Run the test suite:
+```bash
+npm run lint
+```
+
 ### Cleanup
 
 Stop LocalStack:

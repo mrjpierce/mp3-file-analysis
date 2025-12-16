@@ -8,6 +8,10 @@ import {
   ReadError,
   ObjectNotFoundError,
   ObjectEmptyError,
+  isAWSNotFoundError,
+  isNoSuchKeyError,
+  isObjectEmptyError,
+  isReadError,
 } from "./errors";
 
 /**
@@ -60,21 +64,22 @@ export class FileStorageService {
         key,
         streamTee,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       // If it's already a FileStorageError, re-throw it
       if (error instanceof FileStorageError) {
         throw error;
       }
 
-      // Convert S3 service errors to FileStorageError
-      if (error.message?.includes("not found") || error.name === "NoSuchKey") {
+      // Convert S3 service errors to FileStorageError using type guards
+      if (isNoSuchKeyError(error) || isAWSNotFoundError(error)) {
         throw new ObjectNotFoundError(
-          `Storage object not found: ${error.message}`,
+          `Storage object not found: ${error instanceof Error ? error.message : String(error)}`,
           key,
         );
       }
 
-      if (error.message?.includes("empty")) {
+      // Check for empty object errors (from getStream when response.Body is null)
+      if (isObjectEmptyError(error)) {
         throw new ObjectEmptyError(
           `Storage object is empty: ${error.message}`,
           key,
@@ -82,7 +87,7 @@ export class FileStorageService {
       }
 
       // Check if it's a read error (from getStream)
-      if (error.message?.includes("Failed to get object")) {
+      if (isReadError(error)) {
         throw new ReadError(
           `Failed to read from storage: ${error.message}`,
           key,
@@ -91,7 +96,7 @@ export class FileStorageService {
 
       // Default to upload error for any other error during upload/read
       throw new UploadError(
-        `Failed to upload file to storage: ${error.message}`,
+        `Failed to upload file to storage: ${error instanceof Error ? error.message : String(error)}`,
         key,
       );
     }

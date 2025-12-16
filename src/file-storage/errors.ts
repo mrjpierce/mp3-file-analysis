@@ -134,3 +134,30 @@ export function isNoSuchKeyError(error: unknown): error is AwsSdkError {
   const errorObj = error as Record<string, unknown>;
   return errorObj.name === "NoSuchKey";
 }
+
+/**
+ * Type guard to check if an error indicates an empty storage object
+ * Checks for error messages containing "not found or empty" or "empty"
+ */
+export function isObjectEmptyError(error: unknown): error is Error {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("not found or empty") || message.includes("empty")
+  );
+}
+
+/**
+ * Type guard to check if an error is a read error from storage operations
+ * Checks for error messages containing "Failed to get object"
+ */
+export function isReadError(error: unknown): error is Error {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.message.includes("Failed to get object");
+}

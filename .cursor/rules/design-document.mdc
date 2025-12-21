@@ -86,7 +86,7 @@ graph TB
     Fargate -->|Stream large files| S3
     Fargate -->|Logs| CW
     Fargate -->|Process from S3 stream| S3
-    Fargate -->|JSON Response<br/>{frameCount: number}| ALB
+    Fargate -->|JSON Response<br/>frameCount: number| ALB
     ALB -->|Response| Client
     
     style Client fill:#e1f5ff

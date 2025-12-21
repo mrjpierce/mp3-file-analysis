@@ -2,6 +2,9 @@
 
 NestJS backend API that accepts MP3 file uploads and returns the frame count. Streams to and from S3 to handle large files.
 
+**MVP**
+![MVP](./.docs/mvp.png)
+
 ## Explanation of App Design
 
 ### API Layer
@@ -34,6 +37,21 @@ I produced a high level [Design Document](./.cursor/rules/design-document.mdc) e
 - **If I'm streaming the upload, why place it in S3?** Uploading to S3 allows us to decouple the upload and processing computation. While not necessary now, it allows for event driven async processing in a distributed system that could be implemented later. This is how I would have designed the system if it weren't for the strict API contract requirements.
 
 - **Why the test-data song?** I wasn't sure what the license was on the provided sample. Since I was uploading this project to GitHub I made my own song based on the project just to be safe. Song is released under the Creative Commons (CC) License.
+
+## Scaling / Full Implementations (Post MVP)
+Two possible more robust implementations are available to use post-MVP. These represent possible architectures the system could grow into assuming adequate signals and stressors.
+
+### Distributed Command Pattern
+The first possible post-MVP architecture is a rather simple distributed command pattern. In this architecture the user clients retain a single request synchronous contract with the `/file-upload` compute holding the connection open while it polls the DynamoDB for the remnants of a successful analysis done asynchronously by the file analyzer service which sits behind a SQS command stream.
+
+This solution has the benefit of retraining the original contract of the MVP. Other benefits surround the decoupling of the upload and analysis process via an extensible command stream which can respond to shifting business needs. Downsides include holding a HTTP request open for as long as the analysis takes which makes the `/file-upload` service a bottleneck with a (relatively) low concurrency limit.
+![Full Distributed Command](./.docs/full-distributed-command.png)
+
+### Webhook Callback
+The second possible post-MVP architecture shifts the process away from the single request contract paradigm, requiring a more intelligent client to handle a separate file upload using a provided pre-signed S3 URL. This is a much more robust and scalable design that does not include the `/file-upload` bottleneck as the distributed command pattern. Clients may upload the file at their leisure, the S3 service handling that without the need for additional compute. The File Analyzer service remains decoupled, but in this design its consuming an S3 event stream and calling the user provided webhook upon completion. An argument is to be made about extracting the webhook callback logic out of the File Analyzer and putting it behind a SNS topic or SQS queue.
+
+Benefits include no interaction bottleneck from the user's upload request flowing through a Fargate hosted web service. The largest downside to this solution is its change in request pattern from the user's client.
+![Full Webhook Callback](./.docs/full-webhook-callback.png)
 
 ## Quick Start
 
